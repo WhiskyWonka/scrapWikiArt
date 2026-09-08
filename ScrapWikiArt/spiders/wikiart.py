@@ -3,6 +3,7 @@ import scrapy
 from bs4 import BeautifulSoup
 
 from ScrapWikiArt.items import ImageItem
+from ScrapWikiArt.utils import item_id
 
 
 class WikiArtSpider(scrapy.Spider):
@@ -10,7 +11,6 @@ class WikiArtSpider(scrapy.Spider):
     allowed_domains = ["wikiart.org"]
     domain = "wikiart.org"
     start_urls = ["https://www.wikiart.org/en/artists-by-nation"]
-    id = 0
     custom_settings = {
         "ITEM_PIPELINES": {
             'scrapy.pipelines.images.ImagesPipeline': 1,
@@ -78,10 +78,10 @@ class WikiArtSpider(scrapy.Spider):
 
         if not img_urls:
             img_urls = [response.xpath('//img[@itemprop="image"]/@src').get()]
-        # img = f"img/full/{hashlib.sha1(img_url.encode()).hexdigest()}.{img_url.split('.')[-1]}"
 
+        itemid = item_id(response.url)
         yield ImageItem({
-            "Id": self.id,
+            "Id": itemid,
             "URL": url,
             "Title": title,
             "OriginalTitle": original_title,
@@ -103,4 +103,4 @@ class WikiArtSpider(scrapy.Spider):
             "image_urls": img_urls,
         })
 
-        self.id += 1
+
