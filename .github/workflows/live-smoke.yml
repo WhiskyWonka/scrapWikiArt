@@ -41,3 +41,33 @@ jobs:
           nonempty=$(find /tmp/img -type f -size +0 | wc -l)
           echo "images total=$total nonempty=$nonempty"
           test "$total" -ge 1 && test "$nonempty" -ge 1
+
+  smoke-others:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+      - name: Live crawl artist
+        run: scrapy crawl wikiart_artist -s CLOSESPIDER_ITEMCOUNT=1 -o /tmp/artists.csv -t csv
+      - name: Live crawl style
+        run: scrapy crawl wikiart_style -s CLOSESPIDER_ITEMCOUNT=1 -o /tmp/styles.csv -t csv
+      - name: Live crawl movement
+        run: scrapy crawl wikiart_movement -s CLOSESPIDER_ITEMCOUNT=1 -o /tmp/movements.csv -t csv
+      - name: Live crawl school
+        run: scrapy crawl wikiart_school -s CLOSESPIDER_ITEMCOUNT=1 -o /tmp/schools.csv -t csv
+      - name: Verify other spiders
+        run: |
+          python - <<'EOF'
+          import csv
+          for name in ("artists", "styles", "movements", "schools"):
+              rows = list(csv.DictReader(open("/tmp/%s.csv" % name)))
+              assert rows, "%s: no items" % name
+              r = rows[0]
+              assert r["Name"], "%s: empty Name" % name
+              assert r["Description"], "%s: empty Description" % name
+              print("OK %s: %d items, first Name=%r" % (name, len(rows), r["Name"]))
+          EOF
