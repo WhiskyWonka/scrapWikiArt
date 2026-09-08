@@ -1,0 +1,39 @@
+# TEMPORARY live smoke test — verifies the real wikiart.org crawl with the
+# exact pinned environment (Py 3.10 + requirements.txt). Removed before the
+# docs/crawl-commands PR is finalized.
+name: live-smoke
+
+on:
+  workflow_dispatch:
+  pull_request:
+
+jobs:
+  smoke:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+      - name: Live crawl wikiart (2 items)
+        run: scrapy crawl wikiart -s CLOSESPIDER_ITEMCOUNT=2 -s IMAGES_STORE=/tmp/img -o /tmp/artworks.csv -t csv
+      - name: Verify items
+        run: python - <<'EOF'
+          import csv
+          rows = list(csv.DictReader(open('/tmp/artworks.csv')))
+          assert len(rows) == 2, f"expected 2 items, got {len(rows)}"
+          for r in rows:
+              assert r["Title"], "empty Title"
+              assert r["Author"], "empty Author"
+              assert r["Date"], "empty Date"
+              assert len(r["Id"]) == 40, "Id not 40 chars"
+          print("OK: 2 items, Title/Author/Date present, Ids 40-hex")
+          EOF
+      - name: Verify images downloaded
+        run: |
+          total=$(find /tmp/img -type f | wc -l)
+          nonempty=$(find /tmp/img -type f -size +0 | wc -l)
+          echo "images total=$total nonempty=$nonempty"
+          test "$total" -ge 1 && test "$nonempty" -ge 1
