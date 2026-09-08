@@ -21,10 +21,11 @@ jobs:
       - name: Live crawl wikiart (2 items)
         run: scrapy crawl wikiart -s CLOSESPIDER_ITEMCOUNT=2 -s IMAGES_STORE=/tmp/img -o /tmp/artworks.csv -t csv
       - name: Verify items
-        run: python - <<'EOF'
+        run: |
+          python - <<'EOF'
           import csv
           rows = list(csv.DictReader(open('/tmp/artworks.csv')))
-          assert len(rows) == 2, f"expected 2 items, got {len(rows)}"
+          assert len(rows) == 2, "expected 2 items, got %d" % len(rows)
           for r in rows:
               assert r["Title"], "empty Title"
               assert r["Author"], "empty Author"
