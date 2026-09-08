@@ -3,13 +3,13 @@ import scrapy
 from bs4 import BeautifulSoup
 
 from ScrapWikiArt.items import StyleItem
+from ScrapWikiArt.utils import item_id
 
 
 class WikiArtArtistSpider(scrapy.Spider):
     name = "wikiart_style"
     allowed_domains = ["wikiart.org"]
     start_urls = ["https://www.wikiart.org/en/paintings-by-style"]
-    id = 0
 
     def parse(self, response):
         for style_url in response.xpath('//ul[@class="dictionaries-list"]/li[@class="dottedItem"]/a/@href').getall():
@@ -26,12 +26,13 @@ class WikiArtArtistSpider(scrapy.Spider):
         description_raw = response.xpath('//p[@class="dictionary-description-text"]').get()
         description = BeautifulSoup(description_raw, features="lxml").get_text() if description_raw else description_raw
 
+        itemid = item_id(response.url)
         yield StyleItem({
-            "Id": self.id,
+            "Id": itemid,
             "Name": name,
             "Link": link,
             "Description": description,
         })
 
-        self.id += 1
+
 

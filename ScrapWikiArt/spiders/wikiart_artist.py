@@ -3,13 +3,13 @@ import scrapy
 from bs4 import BeautifulSoup
 
 from ScrapWikiArt.items import ArtistItem
+from ScrapWikiArt.utils import item_id
 
 
 class WikiArtArtistSpider(scrapy.Spider):
     name = "wikiart_artist"
     allowed_domains = ["wikiart.org"]
     start_urls = ["https://www.wikiart.org/en/artists-by-nation"]
-    id = 0
 
     def parse(self, response):
         for nation in response.xpath('//main/ul/li/a/@href').getall():
@@ -61,8 +61,9 @@ class WikiArtArtistSpider(scrapy.Spider):
         wiki_description_raw = response.xpath('//div[@id="info-tab-wikipediaArticle"]/p').get()
         wiki_description = BeautifulSoup(wiki_description_raw, features="lxml").get_text() if wiki_description_raw else wiki_description_raw
 
+        itemid = item_id(response.url)
         yield ArtistItem({
-            "Id": self.id,
+            "Id": itemid,
             "URL": response.url,
             "Name": name,
             "OriginalName": original_name,
@@ -87,5 +88,5 @@ class WikiArtArtistSpider(scrapy.Spider):
             "WikiDescription": wiki_description,
         })
 
-        self.id += 1
+
 
