@@ -3,7 +3,7 @@ import scrapy
 from bs4 import BeautifulSoup
 
 from ScrapWikiArt.items import ImageItem
-from ScrapWikiArt.utils import item_id
+from ScrapWikiArt.utils import item_id, labeled_text
 
 
 class WikiArtSpider(scrapy.Spider):
@@ -34,8 +34,7 @@ class WikiArtSpider(scrapy.Spider):
         url = response.url
         title = response.xpath("//article/h3/text()").get()
         original_title_raw = response.xpath("//li[.//s[text()[contains(.,'Original Title:')]]]").get()
-        original_title = original_title_raw.replace("<li>\n            <s>Original Title:</s>\n            ", '')\
-            .replace("\n        </li>", '') if original_title_raw else original_title_raw
+        original_title = labeled_text(original_title_raw)
 
         author = response.xpath("//article/h5[@itemprop='creator']/span[@itemprop='name']/a/text()").get()
         author_raw = response.xpath("//article/h5[@itemprop='creator']/span[@itemprop='name']/a/@href").get()
@@ -60,8 +59,7 @@ class WikiArtSpider(scrapy.Spider):
         location = response.xpath("//li[.//s[text()[contains(.,'Location:')]]]/span/text()").get()
 
         dimensions_raw = response.xpath("//li[.//s[text()[contains(.,'Dimensions')]]]").get()
-        dimensions = dimensions_raw.replace('<li>\n            <s class="title">Dimensions:</s>\n            ', '')\
-            .replace("\n        </li>", '') if dimensions_raw else dimensions_raw
+        dimensions = labeled_text(dimensions_raw)
 
         description_raw = response.xpath('//div[@id="info-tab-description"]/p').get()
         description = BeautifulSoup(description_raw, features="lxml").get_text() if description_raw else description_raw
