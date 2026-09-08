@@ -88,3 +88,32 @@ def clean_whitespace(value):
     if not value:
         return value
     return re.sub(r"\s+", " ", value).strip()
+
+
+# Fallback used when SPIDERS_ENABLED is unset or explicitly None. Kept as a
+# module constant so tests and settings.py share one source of truth.
+DEFAULT_ENABLED_SPIDERS = ["wikiart"]
+
+
+def spider_is_disabled(spider):
+    """Fail-closed, three-state enablement check for a spider (issue #45).
+
+    Reads SPIDERS_ENABLED from ``spider.settings`` (Scrapy Settings):
+
+    - key absent or None  -> DEFAULT_ENABLED_SPIDERS (only wikiart enabled)
+    - explicit []         -> every spider disabled (CI-safe kill switch)
+    - list of names       -> only those spiders enabled
+
+    A comma-separated string splits like getlist would (defensive for the
+    undocumented ``-s`` side channel). Relies on ``"SPIDERS_ENABLED" in
+    settings`` plus ``get()``: getlist() cannot distinguish unset from None
+    from [] in Scrapy 2.10. Side-effect free (no logging).
+    """
+    settings = spider.settings
+    if "SPIDERS_ENABLED" not in settings:
+        enabled = DEFAULT_ENABLED_SPIDERS
+    else:
+        enabled = settings.get("SPIDERS_ENABLED", DEFAULT_ENABLED_SPIDERS)
+        if isinstance(enabled, str):
+            enabled = enabled.split(",")
+    return spider.name not in enabled
