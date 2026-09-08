@@ -54,3 +54,15 @@ def image_urls_or_empty(variant_urls, fallback_url):
     if not urls and fallback_url:
         urls = [fallback_url]
     return urls
+
+
+def clean_name(*candidates):
+    """Return the first non-empty candidate stripped of whitespace, or None.
+
+    Guards against None from XPath selectors (issue #12) while normalizing
+    whitespace when a value exists.
+    """
+    for candidate in candidates:
+        if candidate is not None and candidate.strip():
+            return candidate.strip()
+    return None

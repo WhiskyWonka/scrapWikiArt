@@ -3,7 +3,7 @@ import scrapy
 from bs4 import BeautifulSoup
 
 from ScrapWikiArt.items import StyleItem
-from ScrapWikiArt.utils import item_id
+from ScrapWikiArt.utils import clean_name, item_id
 
 
 class WikiArtArtistSpider(scrapy.Spider):
@@ -16,11 +16,13 @@ class WikiArtArtistSpider(scrapy.Spider):
             yield response.follow(style_url, callback=self.parse_style)
 
     def parse_style(self, response):
-        name = response.xpath('//div[@class="dictionary-illustration-container"]//h1/text()').get()
+        name = clean_name(
+            response.xpath('//div[@class="dictionary-illustration-container"]//h1/text()').get(),
+            response.xpath('//main/header/h1/text()').get(),
+        )
         if not name:
-            name = response.xpath('//main/header/h1/text()').get()
-
-        name = name.strip()
+            self.logger.warning("No name found at %s", response.url)
+            return
         link = response.url
 
         description_raw = response.xpath('//p[@class="dictionary-description-text"]').get()
