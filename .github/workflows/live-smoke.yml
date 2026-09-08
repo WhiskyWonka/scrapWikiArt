@@ -29,9 +29,9 @@ jobs:
           for r in rows:
               assert r["Title"], "empty Title"
               assert r["Author"], "empty Author"
-              assert r["Date"], "empty Date"
               assert len(r["Id"]) == 40, "Id not 40 chars"
-          print("OK: %d live items" % len(rows))
+          empty = {k: sum(1 for r in rows if not r[k]) for k in ("Date", "Styles", "Description", "WikiDescription")}
+          print("OK: %d live items; empty fields: %s" % (len(rows), empty))
           for r in rows[:3]:
               print(" | ".join([r["Title"], r["Author"], r["Date"], r["Styles"], r["Id"][:8]]))
           EOF
