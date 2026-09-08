@@ -40,3 +40,17 @@ def labeled_text(raw_html):
     for label in soup.find_all("s"):
         label.decompose()
     return soup.get_text().strip()
+
+
+def image_urls_or_empty(variant_urls, fallback_url):
+    """Resolve image URLs for an item, never producing None entries.
+
+    - Uses variant URLs when present (filters out empty strings).
+    - Falls back to the single <img> src when no variants exist.
+    - Returns [] when nothing is found — ImagesPipeline safely skips
+      empty image_urls lists (issue #7).
+    """
+    urls = [u for u in variant_urls if u]
+    if not urls and fallback_url:
+        urls = [fallback_url]
+    return urls
