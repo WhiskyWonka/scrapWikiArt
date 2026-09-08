@@ -41,7 +41,8 @@ These DuckDuckGo spiders enhance and maintain the data integrity by fetching upd
 - Author
 - Author Link
 - Date
-- Styles
+- Styles (pipe-separated, e.g. `Cubism | Abstract Art`)
+- StylesLinks (pipe-separated)
 - Series
 - Series Link
 - Genre

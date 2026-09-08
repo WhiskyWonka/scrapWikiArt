@@ -56,6 +56,16 @@ def image_urls_or_empty(variant_urls, fallback_url):
     return urls
 
 
+def pipe_join(values):
+    """Join an iterable of strings with " | ", skipping None and empty values.
+
+    Returns "" for a None or empty iterable.
+    """
+    if not values:
+        return ""
+    return " | ".join(v for v in values if v)
+
+
 def clean_name(*candidates):
     """Return the first non-empty candidate stripped of whitespace, or None.
 
