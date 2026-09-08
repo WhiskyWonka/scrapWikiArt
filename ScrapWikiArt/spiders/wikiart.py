@@ -38,7 +38,8 @@ class WikiArtSpider(scrapy.Spider):
             .replace("\n        </li>", '') if original_title_raw else original_title_raw
 
         author = response.xpath("//article/h5[@itemprop='creator']/span[@itemprop='name']/a/text()").get()
-        author_link = self.domain + response.xpath("//article/h5[@itemprop='creator']/span[@itemprop='name']/a/@href").get()
+        author_raw = response.xpath("//article/h5[@itemprop='creator']/span[@itemprop='name']/a/@href").get()
+        author_link = (self.domain + author_raw) if author_raw else None
         date = response.xpath("//li[.//s[text()[contains(.,'Date:')]]]/span[@itemprop='dateCreated']/text()").get()
 
         styles_names = response.xpath("//li[.//s[text()[contains(.,'Style:')]]]/span/a/text()").getall()
@@ -52,7 +53,8 @@ class WikiArtSpider(scrapy.Spider):
         series_link = response.xpath("//li[.//s[text()[contains(.,'Series:')]]]/a/@href").get()
 
         genre = response.xpath("//li[.//s[text()[contains(.,'Genre:')]]]/span/a/span[@itemprop='genre']/text()").get()
-        genre_link = self.domain + response.xpath("//li[.//s[text()[contains(.,'Genre:')]]]/span/a/@href").get()
+        genre_raw = response.xpath("//li[.//s[text()[contains(.,'Genre:')]]]/span/a/@href").get()
+        genre_link = (self.domain + genre_raw) if genre_raw else None
 
         media = response.xpath("//li[.//s[text()[contains(.,'Media:')]]]/span/a/text()").getall()
         location = response.xpath("//li[.//s[text()[contains(.,'Location:')]]]/span/text()").get()
