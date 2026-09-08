@@ -4,8 +4,9 @@
 name: live-smoke
 
 on:
+  push:
+    branches: [docs/crawl-commands]
   workflow_dispatch:
-  pull_request:
 
 jobs:
   smoke:
