@@ -126,7 +126,7 @@ if __name__ == '__main__':
         ('artist_update.csv', generate_prompt_meta("artist"), 'artist_validated.csv'),
         ('movements_update.csv', generate_prompt_meta("art movement"), 'movement_validated.csv'),
         ('schools_update.csv', generate_prompt_meta("art school"), 'school_validated.csv'),
-        ('styles_update.csv', generate_prompt_meta("art school"), 'styles_validated.csv'),
+        ('styles_update.csv', generate_prompt_meta("art style"), 'styles_validated.csv'),
     ]
 
     for input_file, generate_prompt, output_file in jobs:
