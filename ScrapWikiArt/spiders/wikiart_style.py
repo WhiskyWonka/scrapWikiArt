@@ -25,6 +25,11 @@ class WikiArtArtistSpider(scrapy.Spider):
             return
         link = response.url
 
+        # WikiArt no longer serves the dictionary description server-side:
+        # style/movement/school pages are client-rendered (AngularJS SPA) and the
+        # old dictionary-description-text markup is gone, so Description is None.
+        # The selector is kept intentionally to pick the description back up if
+        # WikiArt restores the markup (see issue #43).
         description_raw = response.xpath('//p[@class="dictionary-description-text"]').get()
         description = BeautifulSoup(description_raw, features="lxml").get_text() if description_raw else description_raw
 

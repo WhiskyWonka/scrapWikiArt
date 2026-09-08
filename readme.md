@@ -96,6 +96,11 @@ These DuckDuckGo spiders enhance and maintain the data integrity by fetching upd
 - Link
 - Description
 
+> **Note:** Style/Movement/School `Description` is currently empty on the live
+> site: wikiart.org moved these dictionary pages to a client-rendered SPA and no
+> longer sends the description server-side (see issue #43). The spider selector
+> is kept so it picks the description back up if WikiArt restores the markup.
+
 The main objective is to extract detailed data about art pieces and artists from the website, providing valuable datasets for data science and machine learning endeavors.
 
 *Scraping of 191265 images took **~14 hours** on a MacBook Pro (Retina, 
