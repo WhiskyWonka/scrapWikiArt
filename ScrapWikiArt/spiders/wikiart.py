@@ -3,7 +3,7 @@ import scrapy
 from bs4 import BeautifulSoup
 
 from ScrapWikiArt.items import ImageItem
-from ScrapWikiArt.utils import image_urls_or_empty, item_id, labeled_text
+from ScrapWikiArt.utils import image_urls_or_empty, item_id, labeled_text, pipe_join
 
 
 class WikiArtSpider(scrapy.Spider):
@@ -42,11 +42,12 @@ class WikiArtSpider(scrapy.Spider):
         date = response.xpath("//li[.//s[text()[contains(.,'Date:')]]]/span[@itemprop='dateCreated']/text()").get()
 
         styles_names = response.xpath("//li[.//s[text()[contains(.,'Style:')]]]/span/a/text()").getall()
-        styles_links = map(
-            lambda style_url: self.domain + style_url,
-            response.xpath("//li[.//s[text()[contains(.,'Style:')]]]/span/a/@href").getall()
-        )
-        styles = list(zip(styles_names, styles_links))
+        styles_links = [
+            self.domain + url
+            for url in response.xpath("//li[.//s[text()[contains(.,'Style:')]]]/span/a/@href").getall()
+        ]
+        styles = pipe_join(styles_names)
+        styles_links_joined = pipe_join(styles_links)
 
         series = response.xpath("//li[.//s[text()[contains(.,'Series:')]]]/a/text()").get()
         series_link = response.xpath("//li[.//s[text()[contains(.,'Series:')]]]/a/@href").get()
@@ -89,6 +90,7 @@ class WikiArtSpider(scrapy.Spider):
             "AuthorLink": author_link,
             "Date": date,
             "Styles": styles,
+            "StylesLinks": styles_links_joined,
             "Series": series,
             "SeriesLink": series_link,
             "Genre": genre,

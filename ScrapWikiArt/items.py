@@ -10,6 +10,7 @@ class ImageItem(scrapy.Item):
     AuthorLink = scrapy.Field()
     Date = scrapy.Field()
     Styles = scrapy.Field()
+    StylesLinks = scrapy.Field()
     Series = scrapy.Field()
     SeriesLink = scrapy.Field()
     Genre = scrapy.Field()
