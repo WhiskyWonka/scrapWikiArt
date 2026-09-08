@@ -2,6 +2,11 @@
 # Scrapy settings for ScrapWikiArt
 # =============================================================================
 
+BOT_NAME = "ScrapWikiArt"
+
+SPIDER_MODULES = ["ScrapWikiArt.spiders"]
+NEWSPIDER_MODULE = "ScrapWikiArt.spiders"
+
 # --- Polite crawling ----------------------------------------------------------
 # robots.txt is NOT obeyed because api.duckduckgo.com/robots.txt is
 # `Disallow: /` for all user agents.  Enabling ROBOTSTXT_OBEY would silently

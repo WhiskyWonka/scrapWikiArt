@@ -1,4 +1,4 @@
-from duck_duck_go import DuckDuckGoSpider
+from .duck_duck_go import DuckDuckGoSpider
 from ScrapWikiArt.items import UpdatedSchoolItem
 
 

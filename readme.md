@@ -126,16 +126,28 @@ minutes***
 
 | Crawler | Command                                                                                                                               |
 |---------|---------------------------------------------------------------------------------------------------------------------------------------|
-| Art Pieces Crawler | `scrapy runspider -o data/data.csv -t csv ScrapWikiArt/spiders/wikiart.py`                                                                    |
-| Artists Crawler | `scrapy runspider -o data/artists.csv -t csv ScrapWikiArt/spiders/wikiart_artist.py`                                                          |
-| Styles Crawler | `scrapy runspider -o data/styles.csv -t csv ScrapWikiArt/spiders/wikiart_style.py`                                                            |
-| Movements Crawler | `scrapy runspider -o data/movements.csv -t csv ScrapWikiArt/spiders/wikiart_movement.py`                                                      |
-| Schools Crawler | `scrapy runspider -o data/schools.csv -t csv ScrapWikiArt/spiders/wikiart_school.py`                                                  |
-| DuckDuckGo Crawler | `scrapy runspider -o data/data_update.csv -t csv -a input_file=data/data.csv ScrapWikiArt/spiders/duck_duck_go.py`                    |
-| DuckDuckGo Artist Spider | `scrapy runspider -o data/artist_update.csv -t csv -a input_file=data/artists.csv ScrapWikiArt/spiders/duck_duck_go_artist.py`        |
-| DuckDuckGo Styles Spider | `scrapy runspider -o data/styles_update.csv -t csv -a input_file=data/styles.csv ScrapWikiArt/spiders/duck_duck_go_style.py`          |
-| DuckDuckGo Movements Spider | `scrapy runspider -o data/movements_update.csv -t csv -a input_file=data/movements.csv ScrapWikiArt/spiders/duck_duck_go_movement.py` |
-| DuckDuckGo Schools Spider | `scrapy runspider -o data/schools_update.csv -t csv -a input_file=data/schools.csv ScrapWikiArt/spiders/duck_duck_go_school.py`              |
+| Art Pieces Crawler | `scrapy crawl wikiart -o data/data.csv -t csv`                                                                                  |
+| Artists Crawler | `scrapy crawl wikiart_artist -o data/artists.csv -t csv`                                                                        |
+| Styles Crawler | `scrapy crawl wikiart_style -o data/styles.csv -t csv`                                                                          |
+| Movements Crawler | `scrapy crawl wikiart_movement -o data/movements.csv -t csv`                                                                    |
+| Schools Crawler | `scrapy crawl wikiart_school -o data/schools.csv -t csv`                                                                        |
+| DuckDuckGo Crawler | `scrapy crawl duck_duck_go -a input_file=data/data.csv -o data/data_update.csv -t csv`                                       |
+| DuckDuckGo Artist Spider | `scrapy crawl duck_duck_go_artist -a input_file=data/artists.csv -o data/artist_update.csv -t csv`                         |
+| DuckDuckGo Styles Spider | `scrapy crawl duck_duck_go_style -a input_file=data/styles.csv -o data/styles_update.csv -t csv`                           |
+| DuckDuckGo Movements Spider | `scrapy crawl duck_duck_go_movement -a input_file=data/movements.csv -o data/movements_update.csv -t csv`               |
+| DuckDuckGo Schools Spider | `scrapy crawl duck_duck_go_school -a input_file=data/schools.csv -o data/schools_update.csv -t csv`                      |
+
+> **Why `scrapy crawl` and not `scrapy runspider`?**
+>
+> `scrapy runspider <file.py>` executes the spider with the stock Scrapy
+> defaults and **ignores the project's `ScrapWikiArt/settings.py`**. That
+> means the polite-crawling configuration (see `settings.py`) does not
+> apply: no `ROBOTSTXT_OBEY`, no `DOWNLOAD_DELAY`, no `AUTOTHROTTLE`, no
+> retry on rate limits (429/5xx), and no concurrency caps. The Readme
+> used to recommend `runspider`; the recommended commands above use
+> `scrapy crawl <spider_name>` so every run applies the project settings.
+> `runspider` still works, but only use it for one-off debugging when you
+> deliberately want to skip the project configuration.
 
 ## Output
 
