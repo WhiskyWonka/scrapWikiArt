@@ -1,4 +1,5 @@
 import hashlib
+import re
 
 import pandas as pd
 from bs4 import BeautifulSoup
@@ -76,3 +77,14 @@ def clean_name(*candidates):
         if candidate is not None and candidate.strip():
             return candidate.strip()
     return None
+
+
+def clean_whitespace(value):
+    """Collapse runs of whitespace to a single space and strip edges.
+
+    None-safe: returns None for None input. Empty/whitespace-only strings
+    become "".
+    """
+    if not value:
+        return value
+    return re.sub(r"\s+", " ", value).strip()
