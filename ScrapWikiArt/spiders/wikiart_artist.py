@@ -21,7 +21,7 @@ class WikiArtArtistSpider(scrapy.Spider):
 
     def parse_artist(self, response):
         name_raw = response.xpath('//main/div/article/h3/text()')
-        name = clean_whitespace(name_raw.get()) if name_raw else name_raw
+        name = clean_whitespace(name_raw.get())
         original_name_raw = response.xpath('//main/div/article/h4/text()').get()
         original_name = clean_whitespace(original_name_raw) if original_name_raw else original_name_raw
 
