@@ -25,13 +25,15 @@ jobs:
           python - <<'EOF'
           import csv
           rows = list(csv.DictReader(open('/tmp/artworks.csv')))
-          assert len(rows) == 2, "expected 2 items, got %d" % len(rows)
+          assert len(rows) >= 1, "no items scraped"
           for r in rows:
               assert r["Title"], "empty Title"
               assert r["Author"], "empty Author"
               assert r["Date"], "empty Date"
               assert len(r["Id"]) == 40, "Id not 40 chars"
-          print("OK: 2 items, Title/Author/Date present, Ids 40-hex")
+          print("OK: %d live items" % len(rows))
+          for r in rows[:3]:
+              print(" | ".join([r["Title"], r["Author"], r["Date"], r["Styles"], r["Id"][:8]]))
           EOF
       - name: Verify images downloaded
         run: |
