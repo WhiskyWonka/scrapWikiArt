@@ -117,6 +117,12 @@ minutes***
 `cd ScrapWikiArt`\
 `pip install -r requirements.txt`
 
+3. (Optional) To run the LLM-based data validation script
+   (`data_validation_script.py`), additionally install the validation
+   dependencies:
+
+`pip install -r requirements-validation.txt`
+
 | Crawler | Command                                                                                                                               |
 |---------|---------------------------------------------------------------------------------------------------------------------------------------|
 | Art Pieces Crawler | `scrapy runspider -o data/data.csv -t csv ScrapWikiArt/spiders/wikiart.py`                                                                    |
