@@ -3,7 +3,7 @@ import scrapy
 from bs4 import BeautifulSoup
 
 from ScrapWikiArt.items import ArtistItem
-from ScrapWikiArt.utils import item_id
+from ScrapWikiArt.utils import item_id, labeled_text
 
 
 class WikiArtArtistSpider(scrapy.Spider):
@@ -32,8 +32,7 @@ class WikiArtArtistSpider(scrapy.Spider):
         death_place = response.xpath('//main/div/article/ul/li/span[@itemprop="deathPlace"]/text()').get()
 
         active_years_raw = response.xpath('//main/div/article/ul/li[.//s[text()[contains(.,"Active Years:")]]]').get()
-        active_years = active_years_raw.replace("<li>\n            <s>Active Years:</s>\n            ", '')\
-            .replace("\n        </li>", '') if active_years_raw else active_years_raw
+        active_years = labeled_text(active_years_raw)
 
         nationality = response.xpath('//span[@itemprop="nationality"]/text()').get()
 
