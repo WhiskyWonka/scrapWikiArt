@@ -1,5 +1,7 @@
 import hashlib
 
+import pandas as pd
+
 
 def item_id(url: str) -> str:
     """Deterministic, collision-resistant item id derived from the URL.
@@ -9,3 +11,16 @@ def item_id(url: str) -> str:
     negligible even for tens of millions of items.
     """
     return hashlib.sha1(url.encode()).hexdigest()
+
+
+def filter_missing_descriptions(df, columns):
+    """Return rows where EVERY column in `columns` is missing (NaN/None,
+    empty string, or whitespace-only).
+
+    pandas isna() does not detect empty strings: to_csv() writes missing
+    cells as empty strings and read_csv() can parse them back as ''.
+    """
+    mask = pd.Series(True, index=df.index)
+    for col in columns:
+        mask &= df[col].isna() | df[col].astype(str).str.strip().eq("")
+    return df[mask]

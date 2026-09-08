@@ -2,6 +2,7 @@ import scrapy
 import json
 import pandas as pd
 from ScrapWikiArt.items import ImageItem
+from ScrapWikiArt.utils import filter_missing_descriptions
 
 
 class DuckDuckGoSpider(scrapy.Spider):
@@ -22,10 +23,15 @@ class DuckDuckGoSpider(scrapy.Spider):
         # Read the input file using Pandas
         df = pd.read_csv(self.input_file, low_memory=False)
 
-        # Filter out rows that already have a description or WikiDescription
+        # Filter out rows that already have a description or WikiDescription.
+        # isna() alone misses '' and whitespace-only cells (to_csv() writes
+        # missing cells as empty strings), so normalize via
+        # filter_missing_descriptions (issue #3).
 
-        df_filtered = df[df["Description"].isna() & df["WikiDescription"].isna()] \
-            if "WikiDescription" in df else df[df["Description"].isna()]
+        columns = ["Description"]
+        if "WikiDescription" in df:
+            columns.append("WikiDescription")
+        df_filtered = filter_missing_descriptions(df, columns)
 
         for row_dict in df_filtered.to_dict(orient="records"):
             query = row_dict[self.query_feature]
