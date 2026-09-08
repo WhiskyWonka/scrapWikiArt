@@ -15,7 +15,7 @@ def generate_prompt_meta(df_type):
             prompt += f"{key}: {value}\n"
 
         prompt += f"""
-        And its DuckDuckGo-sourced description:"
+        And its DuckDuckGo-sourced description:
         WikiDescription: {row_dict.get('WikiDescription', '[No Wiki Description]')} 
         
         Is the WikiDescription accurate and relevant to this {df_type}? Answer with 'Yes' or 'No' only."""
