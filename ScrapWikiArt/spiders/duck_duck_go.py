@@ -35,7 +35,7 @@ class DuckDuckGoSpider(scrapy.Spider):
 
         for row_dict in df_filtered.to_dict(orient="records"):
             query = row_dict[self.query_feature]
-            url = f'http://api.duckduckgo.com/?q={query}&format=json'
+            url = f'https://api.duckduckgo.com/?q={query}&format=json'
             yield scrapy.Request(url, meta={'row': row_dict}, callback=self.parse)
 
     def parse(self, response):
