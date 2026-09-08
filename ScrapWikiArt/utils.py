@@ -1,6 +1,7 @@
 import hashlib
 
 import pandas as pd
+from bs4 import BeautifulSoup
 
 
 def item_id(url: str) -> str:
@@ -24,3 +25,18 @@ def filter_missing_descriptions(df, columns):
     for col in columns:
         mask &= df[col].isna() | df[col].astype(str).str.strip().eq("")
     return df[mask]
+
+
+def labeled_text(raw_html):
+    """Extract text from a '<li>' fragment, dropping '<s>' field labels.
+
+    Robust to whitespace, indentation, class and attribute changes in
+    wikiart.org's HTML — unlike string .replace() on raw markup.
+    Returns None for None input, extracted text otherwise.
+    """
+    if raw_html is None:
+        return None
+    soup = BeautifulSoup(raw_html, features="lxml")
+    for label in soup.find_all("s"):
+        label.decompose()
+    return soup.get_text().strip()
