@@ -37,16 +37,20 @@ class DuckDuckGoSpider(scrapy.Spider):
         try:
             data = json.loads(response.text)
             if not ('Abstract' in data and 'AbstractURL' in data):
-                self.retry_request(response)
+                yield from self.retry_request(response)
+                return
 
             if data['Abstract'] != '':
                 row_dict["WikiLink"] = data["AbstractURL"]
                 row_dict["WikiDescription"] = data["Abstract"]
                 yield self.item_class(row_dict)
+                return
 
-            self.retry_request(response)
+            yield from self.retry_request(response)
+            return
         except json.JSONDecodeError:
-            self.retry_request(response)
+            yield from self.retry_request(response)
+            return
 
     def retry_request(self, response):
         retry_count = response.meta.get('retry_count', 0)
