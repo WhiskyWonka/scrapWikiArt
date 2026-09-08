@@ -111,7 +111,7 @@ minutes***
 ## Installation
 
 1. Clone this repository:
-`git clone https://github.com/michaelvin1322/scrapWikiArt`
+`git clone https://github.com/WhiskyWonka/scrapWikiArt`
 
 2. Navigate to the repository and install the required packages:
 
@@ -141,11 +141,13 @@ minutes***
 
 ### Art Pieces Crawler
 
-By default, images will be downloaded into the `data/img` directory and 
-data will be saved in `data/data.csv`. 
+Image download is handled by Scrapy's `ImagesPipeline` (enabled via
+`custom_settings` in the spider): the pipeline downloads the images listed
+in the item's `image_urls` field into the `IMAGES_STORE` folder. By default
+images go to `data/img` and data is saved in `data/data.csv`.
 
-Images folder may be changed in `settings.py` by changing path in 
-`IMAGES_STORE`.
+The download folder may be changed by editing `IMAGES_STORE` in the
+spider's `custom_settings` (`ScrapWikiArt/spiders/wikiart.py`).
 
 ### Artists Crawler
 
