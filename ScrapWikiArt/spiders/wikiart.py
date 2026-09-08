@@ -3,7 +3,7 @@ import scrapy
 from bs4 import BeautifulSoup
 
 from ScrapWikiArt.items import ImageItem
-from ScrapWikiArt.utils import item_id, labeled_text
+from ScrapWikiArt.utils import image_urls_or_empty, item_id, labeled_text
 
 
 class WikiArtSpider(scrapy.Spider):
@@ -72,10 +72,12 @@ class WikiArtSpider(scrapy.Spider):
         tags = response.xpath("//div[@class='tags-cheaps']/div/a/text()").getall()
         tags = [tag.replace('\n', '').replace('\t', '').replace(' ', '') for tag in tags]
 
-        img_urls = response.xpath('//ul[@class="image-variants-container"]//a/@data-image-url').getall()
-
+        img_urls = image_urls_or_empty(
+            response.xpath('//ul[@class="image-variants-container"]//a/@data-image-url').getall(),
+            response.xpath('//img[@itemprop="image"]/@src').get(),
+        )
         if not img_urls:
-            img_urls = [response.xpath('//img[@itemprop="image"]/@src').get()]
+            self.logger.warning("No image found at %s", response.url)
 
         itemid = item_id(response.url)
         yield ImageItem({
