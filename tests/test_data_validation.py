@@ -26,10 +26,11 @@ class TestResolveDbPath(unittest.TestCase):
 
     def test_default_from_settings(self):
         import argparse
+        from ScrapWikiArt.settings import WIKIART_DB_PATH
         parser = argparse.ArgumentParser()
         parser.add_argument("--db-path", default=None)
         args = parser.parse_args([])
-        self.assertEqual(dvs.resolve_db_path(args), "data/works.db")
+        self.assertEqual(dvs.resolve_db_path(args), WIKIART_DB_PATH)
 
     def test_default_mirrors_settings_constant(self):
         from ScrapWikiArt.settings import WIKIART_DB_PATH
