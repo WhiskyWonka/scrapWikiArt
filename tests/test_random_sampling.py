@@ -102,7 +102,6 @@ class TestSamplingGate(unittest.TestCase):
     def test_patched_rng_exact_enqueue_skip(self):
         """Fixed RNG sequence -> exact enqueue/skip set, seen marks rejected."""
         spider = _make_sampling_spider(p=0.5, seed=1)
-        spider._p = 0.5
         spider._rng = mock.MagicMock()
         # rng.random() < 0.5: 0.3 enqueue, 0.7 skip, 0.2 enqueue, 0.8 skip
         spider._rng.random.side_effect = [0.3, 0.7, 0.2, 0.8]
@@ -132,7 +131,6 @@ class TestSamplingGate(unittest.TestCase):
         """Spec: URL already in seen is skipped before the sampling check."""
         spider = _make_sampling_spider(p=0.5, seed=1)
         spider.seen = {URLS["one"]}
-        spider._p = 0.5
         spider._rng = mock.MagicMock()
         spider._rng.random.return_value = 0.0  # would accept everything
         requests = list(spider.parse_artist(_artist_response()))
@@ -144,11 +142,23 @@ class TestSamplingGate(unittest.TestCase):
         )
 
     def test_rejected_url_not_reevaluated(self):
-        """Spec: a URL rejected by sampling is seen on the next pass."""
+        """Spec: a URL rejected by sampling is seen on the next pass.
+
+        Pins the exact accepted set, so an always-skip RNG bug FAILS here
+        (first run would yield [] instead of exactly two URLs — the old
+        assertLess(len(first), 4) was vacuously satisfied by a skipped-every
+        run).
+        """
         spider = _make_sampling_spider(p=0.5, seed=3)
+        spider._rng = mock.MagicMock()
+        # rng.random() < 0.5: 0.3 enqueue, 0.7 skip, 0.2 enqueue, 0.8 skip
+        spider._rng.random.side_effect = [0.3, 0.7, 0.2, 0.8]
         response = _artist_response()
-        first = list(spider.parse_artist(response))
-        self.assertLess(len(first), 4)  # sampling actually rejected something
+        first = [r.url for r in spider.parse_artist(response)]
+        self.assertEqual(
+            {URLS["one"], URLS["three"]},
+            set(first),
+        )
         second = list(spider.parse_artist(response))
         self.assertEqual(second, [])
 
