@@ -1,5 +1,12 @@
+import logging
+import os
+import subprocess
+import sys
+import tempfile
 import unittest
+from pathlib import Path
 
+import scrapy
 from scrapy.settings import Settings
 
 from ScrapWikiArt.spiders.duck_duck_go import DuckDuckGoSpider
@@ -32,13 +39,13 @@ SPIDER_CLASSES = {
 _UNSET = object()
 
 
-def make_spider(name, enabled=_UNSET):
+def make_spider(name, enabled=_UNSET, **kwargs):
     """Instantiate the spider class for `name` with injected Settings.
 
     Bare spider instances have no `settings` attribute (Scrapy 2.10 sets it
     only in from_crawler), so tests inject `spider.settings` directly.
     """
-    spider = SPIDER_CLASSES[name]()
+    spider = SPIDER_CLASSES[name](**kwargs)
     settings = Settings()
     if enabled is not _UNSET:
         settings.set("SPIDERS_ENABLED", enabled)
@@ -90,6 +97,139 @@ class TestSpiderIsDisabled(unittest.TestCase):
                 self.assertFalse(spider_is_disabled(spider), name)
             else:
                 self.assertTrue(spider_is_disabled(spider), name)
+
+
+class TestGuards(unittest.TestCase):
+    """start_requests() no-op behavior for disabled spiders."""
+
+    def test_default_config_disables_all_but_wikiart(self):
+        # Default is ["wikiart"]: wikiart crawls, the other 9 no-op.
+        for name in SPIDER_CLASSES:
+            spider = make_spider(name)  # unset -> default
+            if name == "wikiart":
+                requests = list(spider.start_requests())
+                self.assertEqual([r.url for r in requests], spider.start_urls)
+            else:
+                with self.assertLogs(logging.getLogger(spider.name), level="INFO") as captured:
+                    requests = list(spider.start_requests())
+                self.assertEqual(requests, [])
+                self.assertEqual(
+                    captured.output,
+                    [
+                        f"INFO:{spider.name}:Spider {name} is disabled via "
+                        "SPIDERS_ENABLED, skipping"
+                    ],
+                )
+
+    def test_disabled_logs_and_yields_zero(self):
+        # Pinned message + empty stream, no exception (wikiart_artist).
+        spider = make_spider("wikiart_artist")
+        with self.assertLogs(logging.getLogger(spider.name), level="INFO") as captured:
+            requests = list(spider.start_requests())
+        self.assertEqual(requests, [])
+        self.assertEqual(len(captured.output), 1)
+        self.assertIn(
+            "Spider wikiart_artist is disabled via SPIDERS_ENABLED, skipping",
+            captured.output[0],
+        )
+
+    def test_empty_list_disables_even_wikiart(self):
+        # Explicit [] is the kill switch: wikiart also no-ops (issue #45).
+        spider = make_spider("wikiart", enabled=[])
+        with self.assertLogs(logging.getLogger(spider.name), level="INFO"):
+            requests = list(spider.start_requests())
+        self.assertEqual(requests, [])
+
+    def test_enabled_yields_start_urls(self):
+        # Enabled spider crawls exactly as before the change.
+        spider = make_spider("wikiart", enabled=["wikiart"])
+        requests = list(spider.start_requests())
+        self.assertEqual([r.url for r in requests], spider.start_urls)
+
+    def test_custom_list_enables_only_named(self):
+        # Custom single-spider enable: wikiart_style crawls, rest no-op.
+        for name in SPIDER_CLASSES:
+            spider = make_spider(name, enabled=["wikiart_style"])
+            if name == "wikiart_style":
+                requests = list(spider.start_requests())
+                self.assertEqual([r.url for r in requests], spider.start_urls)
+            else:
+                with self.assertLogs(logging.getLogger(spider.name), level="INFO"):
+                    requests = list(spider.start_requests())
+                self.assertEqual(requests, [])
+
+
+class TestDuckDuckGoGuard(unittest.TestCase):
+    """The disabled check wins over input-file validation (issue #45)."""
+
+    def test_disabled_without_input_file_no_close_spider(self):
+        spider = make_spider("duck_duck_go_movement")  # default -> disabled
+        self.assertIsNone(spider.input_file)
+        with self.assertLogs(logging.getLogger(spider.name), level="INFO") as captured:
+            requests = list(spider.start_requests())
+        self.assertEqual(requests, [])
+        self.assertIn(
+            "Spider duck_duck_go_movement is disabled via SPIDERS_ENABLED, skipping",
+            captured.output[0],
+        )
+
+    def test_disabled_all_variants_without_input_file(self):
+        # Every DDG variant shares the base guard: zero requests, no raise.
+        for name in (
+            "duck_duck_go",
+            "duck_duck_go_artist",
+            "duck_duck_go_style",
+            "duck_duck_go_movement",
+            "duck_duck_go_school",
+        ):
+            spider = make_spider(name)
+            with self.assertLogs(logging.getLogger(spider.name), level="INFO"):
+                requests = list(spider.start_requests())
+            self.assertEqual(requests, [], name)
+
+    def test_enabled_without_input_file_still_raises(self):
+        spider = make_spider("duck_duck_go_movement", enabled=["duck_duck_go_movement"])
+        with self.assertRaises(scrapy.exceptions.CloseSpider):
+            list(spider.start_requests())
+
+    def test_enabled_with_input_file_yields_requests(self):
+        # Two empty-Description rows -> two DDG API requests.
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".csv", delete=False) as f:
+            f.write("Name,Description\nRow one,\nRow two,\n")
+            path = f.name
+        try:
+            spider = make_spider(
+                "duck_duck_go_movement",
+                enabled=["duck_duck_go_movement"],
+                input_file=path,
+            )
+            requests = list(spider.start_requests())
+            self.assertEqual(len(requests), 2)
+            self.assertTrue(
+                all(r.url.startswith("https://api.duckduckgo.com/?q=") for r in requests)
+            )
+        finally:
+            os.unlink(path)
+
+
+class TestDisabledCrawl(unittest.TestCase):
+    """Subprocess E2E: disabled spider exits 0 with the no-op log."""
+
+    def test_disabled_cli_exits_zero(self):
+        repo_root = Path(__file__).resolve().parent.parent
+        proc = subprocess.run(
+            [sys.executable, "-m", "scrapy", "crawl", "duck_duck_go_movement"],
+            cwd=repo_root,
+            capture_output=True,
+            text=True,
+            timeout=120,
+        )
+        self.assertEqual(proc.returncode, 0)
+        self.assertIn(
+            "Spider duck_duck_go_movement is disabled via SPIDERS_ENABLED, skipping",
+            proc.stderr,
+        )
+        self.assertNotIn("CloseSpider", proc.stderr)
 
 
 if __name__ == "__main__":

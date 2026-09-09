@@ -3,7 +3,13 @@ import scrapy
 from bs4 import BeautifulSoup
 
 from ScrapWikiArt.items import ImageItem
-from ScrapWikiArt.utils import image_urls_or_empty, item_id, labeled_text, pipe_join
+from ScrapWikiArt.utils import (
+    image_urls_or_empty,
+    item_id,
+    labeled_text,
+    pipe_join,
+    spider_is_disabled,
+)
 
 
 class WikiArtSpider(scrapy.Spider):
@@ -17,6 +23,14 @@ class WikiArtSpider(scrapy.Spider):
         },
         "IMAGES_STORE": "data/img",
     }
+
+    def start_requests(self):
+        if spider_is_disabled(self):
+            self.logger.info(
+                "Spider %s is disabled via SPIDERS_ENABLED, skipping", self.name
+            )
+            return
+        yield from super().start_requests()
 
     def parse(self, response):
         for nation in response.xpath('//main/ul/li/a/@href').getall():
