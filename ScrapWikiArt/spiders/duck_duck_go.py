@@ -35,10 +35,10 @@ class DuckDuckGoSpider(scrapy.Spider):
             columns.append("WikiDescription")
         return columns
 
-    def __init__(self, *args, **kwargs):
+    def __init__(self, db_path=None, *args, **kwargs):
         super().__init__(*args, **kwargs)
         # Optional per-run override of WIKIART_DB_PATH (defaults from settings).
-        self.db_path = kwargs.get("db_path", None)
+        self.db_path = db_path
 
     def start_requests(self):
         # The disabled check wins over DB reads (issue #45).
