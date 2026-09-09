@@ -1,46 +1,59 @@
-import scrapy
 import json
+from contextlib import closing
+
 import pandas as pd
+import scrapy
+
+from ScrapWikiArt import db
 from ScrapWikiArt.items import ImageItem
-from ScrapWikiArt.utils import filter_missing_descriptions, spider_is_disabled
+from ScrapWikiArt.utils import spider_is_disabled
 
 
 class DuckDuckGoSpider(scrapy.Spider):
     name = 'duck_duck_go'
     allowed_domains = ['api.duckduckgo.com']
+    custom_settings = {
+        "ITEM_PIPELINES": {
+            "ScrapWikiArt.pipelines.SQLiteUpdatePipeline": 1,
+        },
+    }
 
     item_class = ImageItem
     query_feature = 'Title'
+    # Columns that must be missing for a row to be re-queried. Computed as a
+    # class attribute from the item's declared fields (design D5): the base
+    # spider and the artist spider check both Description and WikiDescription.
+    missing_columns = ["Description", "WikiDescription"]
 
-    def __init__(self, input_file=None, *args, **kwargs):
-        super(DuckDuckGoSpider, self).__init__(*args, **kwargs)
-        self.input_file = input_file
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        # Optional per-run override of WIKIART_DB_PATH (defaults from settings).
+        self.db_path = kwargs.get("db_path", None)
 
     def start_requests(self):
-        # The disabled check wins over input-file validation (issue #45), so a
-        # disabled spider no-ops cleanly instead of raising CloseSpider.
+        # The disabled check wins over DB reads (issue #45).
         if spider_is_disabled(self):
             self.logger.info(
                 "Spider %s is disabled via SPIDERS_ENABLED, skipping", self.name
             )
             return
-        if self.input_file is None:
-            raise scrapy.exceptions.CloseSpider('Input file not specified')
+        db_path = self.db_path or db.default_db_path(self.settings)
+        table = db.table_for_class(self.item_class)
+        with closing(db.connect(db_path)) as conn:
+            if not db.table_exists(conn, table):
+                self.logger.warning(
+                    "Table %r not found in %s — no rows to enrich, skipping",
+                    table, db_path,
+                )
+                return
+            df = pd.read_sql(db.unenriched_sql(table, self.missing_columns), conn)
 
-        # Read the input file using Pandas
-        df = pd.read_csv(self.input_file, low_memory=False)
-
-        # Filter out rows that already have a description or WikiDescription.
-        # isna() alone misses '' and whitespace-only cells (to_csv() writes
-        # missing cells as empty strings), so normalize via
-        # filter_missing_descriptions (issue #3).
-
-        columns = ["Description"]
-        if "WikiDescription" in df:
-            columns.append("WikiDescription")
-        df_filtered = filter_missing_descriptions(df, columns)
-
-        for row_dict in df_filtered.to_dict(orient="records"):
+        fields = set(self.item_class.fields)
+        for row_dict in df.to_dict(orient="records"):
+            # Keep only declared item fields: the works table also carries
+            # DB-only columns (scraped_at, ValidatedRaw, Validated) that
+            # item_class(row_dict) would reject.
+            row_dict = {k: v for k, v in row_dict.items() if k in fields}
             query = row_dict[self.query_feature]
             url = f'https://api.duckduckgo.com/?q={query}&format=json'
             yield scrapy.Request(url, meta={'row': row_dict}, callback=self.parse)
@@ -130,4 +143,3 @@ class DuckDuckGoSpider(scrapy.Spider):
             callback=self.parse,
             dont_filter=True,
         )
-

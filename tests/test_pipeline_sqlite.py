@@ -11,9 +11,13 @@ from ScrapWikiArt.items import (
     MovementItem,
     SchoolItem,
     StyleItem,
+    UpdatedMovementItem,
+    UpdatedSchoolItem,
+    UpdatedStyleItem,
 )
 from ScrapWikiArt.pipelines import (
     SQLiteDictionaryPipeline,
+    SQLiteUpdatePipeline,
     SQLiteWorksPipeline,
 )
 
@@ -200,6 +204,116 @@ class TestSQLiteDictionaryPipeline(unittest.TestCase):
         item = ImageItem({"Id": "x", "Title": "Test"})
         result = p.process_item(item, MagicMock())
         self.assertIs(result, item)
+        conn = sqlite3.connect(self.db_path)
+        try:
+            cursor = conn.execute("SELECT COUNT(*) FROM works")
+            self.assertEqual(cursor.fetchone()[0], 0)
+        finally:
+            conn.close()
+
+
+class TestSQLiteUpdatePipeline(unittest.TestCase):
+    def setUp(self):
+        self.db_path = _temp_db_path()
+        self.pipeline = None
+
+    def tearDown(self):
+        if self.pipeline is not None:
+            self.pipeline.close_spider(MagicMock())
+        if os.path.exists(self.db_path):
+            os.unlink(self.db_path)
+
+    def _make_pipeline(self):
+        self.pipeline = SQLiteUpdatePipeline()
+        spider = MagicMock()
+        spider.settings = {"WIKIART_DB_PATH": self.db_path}
+        self.pipeline.open_spider(spider)
+        return self.pipeline, spider
+
+    def test_updates_works_row(self):
+        p, _ = self._make_pipeline()
+        conn = connect(self.db_path)
+        try:
+            insert_ignore(conn, "works", {
+                "Id": "w1", "Title": "Old", "URL": "u", "scraped_at": "2024",
+            })
+        finally:
+            conn.close()
+        item = ImageItem({
+            "Id": "w1",
+            "WikiDescription": "New description",
+            "WikiLink": "https://wiki.org/art",
+        })
+        result = p.process_item(item, MagicMock())
+        self.assertIs(result, item)
+        conn = sqlite3.connect(self.db_path)
+        try:
+            cursor = conn.execute(
+                "SELECT WikiDescription, WikiLink FROM works WHERE Id = 'w1'"
+            )
+            row = cursor.fetchone()
+            self.assertEqual(row[0], "New description")
+            self.assertEqual(row[1], "https://wiki.org/art")
+        finally:
+            conn.close()
+
+    def test_updates_artists_row_for_updated_artist_item(self):
+        p, _ = self._make_pipeline()
+        conn = connect(self.db_path)
+        try:
+            insert_ignore(conn, "artists", {"Id": "a1", "Name": "Picasso"})
+        finally:
+            conn.close()
+        # ArtistItem is used by duck_duck_go_artist (no Updated variant)
+        item = ArtistItem({
+            "Id": "a1",
+            "WikiDescription": "Famous painter",
+            "WikiLink": "https://wiki.org/picasso",
+        })
+        p.process_item(item, MagicMock())
+        conn = sqlite3.connect(self.db_path)
+        try:
+            cursor = conn.execute(
+                "SELECT WikiDescription, WikiLink FROM artists WHERE Id = 'a1'"
+            )
+            row = cursor.fetchone()
+            self.assertEqual(row[0], "Famous painter")
+            self.assertEqual(row[1], "https://wiki.org/picasso")
+        finally:
+            conn.close()
+
+    def test_updates_styles_row_for_updated_style_item(self):
+        p, _ = self._make_pipeline()
+        conn = connect(self.db_path)
+        try:
+            insert_ignore(conn, "styles", {"Id": "s1", "Name": "Cubism"})
+        finally:
+            conn.close()
+        item = UpdatedStyleItem({
+            "Id": "s1",
+            "WikiDescription": "20th century movement",
+            "WikiLink": "https://wiki.org/cubism",
+        })
+        p.process_item(item, MagicMock())
+        conn = sqlite3.connect(self.db_path)
+        try:
+            cursor = conn.execute(
+                "SELECT WikiDescription, WikiLink FROM styles WHERE Id = 's1'"
+            )
+            row = cursor.fetchone()
+            self.assertEqual(row[0], "20th century movement")
+            self.assertEqual(row[1], "https://wiki.org/cubism")
+        finally:
+            conn.close()
+
+    def test_noop_on_unknown_id(self):
+        p, _ = self._make_pipeline()
+        item = ImageItem({
+            "Id": "missing",
+            "WikiDescription": "Nope",
+            "WikiLink": "https://wiki.org/nope",
+        })
+        p.process_item(item, MagicMock())
         conn = sqlite3.connect(self.db_path)
         try:
             cursor = conn.execute("SELECT COUNT(*) FROM works")

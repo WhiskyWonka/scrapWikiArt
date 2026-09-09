@@ -71,3 +71,37 @@ class SQLiteDictionaryPipeline:
         if self.conn is not None:
             self.conn.close()
             self.conn = None
+
+
+class SQLiteUpdatePipeline:
+    """Write back WikiDescription/WikiLink to the item's source table.
+
+    Used by the DuckDuckGo spiders: dispatches by item type and performs an
+    UPDATE ... SET WikiDescription=?, WikiLink=? WHERE Id (design D5/DD.5).
+    Unknown Ids are a silent no-op; non-matching item types pass through.
+    """
+
+    def open_spider(self, spider):
+        self.db_path = db.default_db_path(spider.settings)
+        self.conn = db.connect(self.db_path)
+        db.create_tables(self.conn)
+
+    def process_item(self, item, spider):
+        table = db.table_for_item(item)
+        if table is None:
+            return item
+        row = dict(item)
+        fields = {}
+        if row.get("WikiDescription") is not None:
+            fields["WikiDescription"] = row["WikiDescription"]
+        if row.get("WikiLink") is not None:
+            fields["WikiLink"] = row["WikiLink"]
+        item_id = row.get("Id")
+        if item_id is not None and fields:
+            db.update_fields(self.conn, table, item_id, fields)
+        return item
+
+    def close_spider(self, spider):
+        if self.conn is not None:
+            self.conn.close()
+            self.conn = None

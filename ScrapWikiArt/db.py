@@ -114,10 +114,21 @@ def table_exists(conn, name):
 
 
 def table_for_item(item):
-    """Map a Scrapy item instance to its SQLite table name, or None."""
-    # isinstance dispatch (design D2) — UpdatedStyleItem matches StyleItem, etc.
+    """Map a Scrapy item instance to its SQLite table name, or None.
+
+    isinstance dispatch (design D2) — UpdatedStyleItem matches StyleItem, etc.
+    """
+    return table_for_class(type(item))
+
+
+def table_for_class(item_class):
+    """Map a Scrapy item *class* to its SQLite table name, or None.
+
+    issubclass dispatch: UpdatedStyleItem derives from StyleItem -> styles.
+    Used by DDG spiders which know their item class, not an instance.
+    """
     for cls, table in _ITEM_TABLE_MAP.items():
-        if isinstance(item, cls):
+        if issubclass(item_class, cls):
             return table
     return None
 
