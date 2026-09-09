@@ -212,6 +212,66 @@ class TestSQLiteDictionaryPipeline(unittest.TestCase):
             conn.close()
 
 
+class TestPipelineDBErrorResilience(unittest.TestCase):
+    """F2: DB failures in pipeline.process_item must not crash the crawl."""
+
+    def setUp(self):
+        self.db_path = _temp_db_path()
+        self.pipeline = None
+
+    def tearDown(self):
+        if self.pipeline is not None:
+            self.pipeline.close_spider(MagicMock())
+        if os.path.exists(self.db_path):
+            os.unlink(self.db_path)
+
+    def _make_pipeline_and_corrupt(self, pipeline_cls):
+        pipeline = pipeline_cls()
+        spider = MagicMock()
+        spider.settings = {"WIKIART_DB_PATH": self.db_path}
+        pipeline.open_spider(spider)
+        # Close the connection so the next DB write fails with sqlite3.Error
+        pipeline.conn.close()
+        return pipeline, spider
+
+    def test_works_pipeline_returns_item_on_db_error(self):
+        p, spider = self._make_pipeline_and_corrupt(SQLiteWorksPipeline)
+        item = ImageItem({"Id": "e1", "URL": "u"})
+        with self.assertLogs("ScrapWikiArt.pipelines", level="WARNING") as cm:
+            result = p.process_item(item, spider)
+        self.assertIs(result, item)
+        self.assertEqual(p._db_errors, 1)
+        self.assertTrue(any("e1" in msg for msg in cm.output))
+
+    def test_dict_pipeline_returns_item_on_db_error(self):
+        p, spider = self._make_pipeline_and_corrupt(SQLiteDictionaryPipeline)
+        item = ArtistItem({"Id": "e2", "Name": "Test"})
+        with self.assertLogs("ScrapWikiArt.pipelines", level="WARNING") as cm:
+            result = p.process_item(item, spider)
+        self.assertIs(result, item)
+        self.assertEqual(p._db_errors, 1)
+        self.assertTrue(any("e2" in msg for msg in cm.output))
+
+    def test_update_pipeline_returns_item_on_db_error(self):
+        p, spider = self._make_pipeline_and_corrupt(SQLiteUpdatePipeline)
+        item = ImageItem({
+            "Id": "e3", "WikiDescription": "desc", "WikiLink": "https://w",
+        })
+        with self.assertLogs("ScrapWikiArt.pipelines", level="WARNING") as cm:
+            result = p.process_item(item, spider)
+        self.assertIs(result, item)
+        self.assertEqual(p._db_errors, 1)
+        self.assertTrue(any("e3" in msg for msg in cm.output))
+
+    def test_db_errors_counter_increments(self):
+        p, spider = self._make_pipeline_and_corrupt(SQLiteWorksPipeline)
+        for i in range(3):
+            item = ImageItem({"Id": f"err{i}", "URL": "u"})
+            with self.assertLogs("ScrapWikiArt.pipelines", level="WARNING"):
+                p.process_item(item, spider)
+        self.assertEqual(p._db_errors, 3)
+
+
 class TestSQLiteUpdatePipeline(unittest.TestCase):
     def setUp(self):
         self.db_path = _temp_db_path()
@@ -318,6 +378,52 @@ class TestSQLiteUpdatePipeline(unittest.TestCase):
         try:
             cursor = conn.execute("SELECT COUNT(*) FROM works")
             self.assertEqual(cursor.fetchone()[0], 0)
+        finally:
+            conn.close()
+
+    def test_partial_update_wiki_description_only(self):
+        """Only WikiDescription set (WikiLink None) — only WikiDescription written."""
+        p, _ = self._make_pipeline()
+        conn = connect(self.db_path)
+        try:
+            insert_ignore(conn, "works", {
+                "Id": "p1", "Title": "T", "URL": "u", "scraped_at": "2024",
+                "WikiDescription": "old", "WikiLink": "https://old",
+            })
+        finally:
+            conn.close()
+        item = ImageItem({"Id": "p1", "WikiDescription": "new"})
+        p.process_item(item, MagicMock())
+        conn = sqlite3.connect(self.db_path)
+        try:
+            row = conn.execute(
+                "SELECT WikiDescription, WikiLink FROM works WHERE Id = 'p1'"
+            ).fetchone()
+            self.assertEqual(row[0], "new")
+            self.assertEqual(row[1], "https://old")  # unchanged
+        finally:
+            conn.close()
+
+    def test_partial_update_wiki_link_only(self):
+        """Only WikiLink set (WikiDescription None) — only WikiLink written."""
+        p, _ = self._make_pipeline()
+        conn = connect(self.db_path)
+        try:
+            insert_ignore(conn, "works", {
+                "Id": "p2", "Title": "T", "URL": "u", "scraped_at": "2024",
+                "WikiDescription": "old desc", "WikiLink": "https://old",
+            })
+        finally:
+            conn.close()
+        item = ImageItem({"Id": "p2", "WikiLink": "https://new"})
+        p.process_item(item, MagicMock())
+        conn = sqlite3.connect(self.db_path)
+        try:
+            row = conn.execute(
+                "SELECT WikiDescription, WikiLink FROM works WHERE Id = 'p2'"
+            ).fetchone()
+            self.assertEqual(row[0], "old desc")  # unchanged
+            self.assertEqual(row[1], "https://new")
         finally:
             conn.close()
 

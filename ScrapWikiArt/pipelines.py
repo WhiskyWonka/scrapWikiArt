@@ -3,10 +3,14 @@
 # Don't forget to add your pipeline to the ITEM_PIPELINES setting
 # See: https://docs.scrapy.org/en/latest/topics/item-pipeline.html
 
+import logging
+import sqlite3
 from datetime import datetime, timezone
 
 from ScrapWikiArt import db
 from ScrapWikiArt.items import ImageItem
+
+logger = logging.getLogger(__name__)
 
 
 def _now_iso():
@@ -29,6 +33,7 @@ class SQLiteWorksPipeline:
     def open_spider(self, spider):
         self.db_path = db.default_db_path(spider.settings)
         self.conn = db.connect(self.db_path)
+        self._db_errors = 0
         db.create_tables(self.conn)
 
     def process_item(self, item, spider):
@@ -38,7 +43,14 @@ class SQLiteWorksPipeline:
         # works.scraped_at is NOT NULL — stamp rows that lack it (e.g. when
         # the pipeline runs without the spider setting the field).
         row.setdefault("scraped_at", _now_iso())
-        db.insert_ignore(self.conn, "works", row)
+        try:
+            db.insert_ignore(self.conn, "works", row)
+        except sqlite3.Error:
+            self._db_errors += 1
+            logger.warning(
+                "DB error inserting item %s into works: %s",
+                row.get("Id"), item,
+            )
         return item
 
     def close_spider(self, spider):
@@ -56,13 +68,21 @@ class SQLiteDictionaryPipeline:
     def open_spider(self, spider):
         self.db_path = db.default_db_path(spider.settings)
         self.conn = db.connect(self.db_path)
+        self._db_errors = 0
         db.create_tables(self.conn)
 
     def process_item(self, item, spider):
         table = db.table_for_item(item)
         if table is None:
             return item
-        db.insert_ignore(self.conn, table, dict(item))
+        try:
+            db.insert_ignore(self.conn, table, dict(item))
+        except sqlite3.Error:
+            self._db_errors += 1
+            logger.warning(
+                "DB error inserting item %s into %s: %s",
+                item.get("Id"), table, item,
+            )
         return item
 
     def close_spider(self, spider):
@@ -82,6 +102,7 @@ class SQLiteUpdatePipeline:
     def open_spider(self, spider):
         self.db_path = db.default_db_path(spider.settings)
         self.conn = db.connect(self.db_path)
+        self._db_errors = 0
         db.create_tables(self.conn)
 
     def process_item(self, item, spider):
@@ -96,7 +117,14 @@ class SQLiteUpdatePipeline:
             fields["WikiLink"] = row["WikiLink"]
         item_id = row.get("Id")
         if item_id is not None and fields:
-            db.update_fields(self.conn, table, item_id, fields)
+            try:
+                db.update_fields(self.conn, table, item_id, fields)
+            except sqlite3.Error:
+                self._db_errors += 1
+                logger.warning(
+                    "DB error updating item %s in %s: %s",
+                    item_id, table, item,
+                )
         return item
 
     def close_spider(self, spider):

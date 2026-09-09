@@ -1,3 +1,5 @@
+import logging
+import sqlite3
 import scrapy
 from contextlib import closing
 
@@ -12,6 +14,8 @@ from ScrapWikiArt.utils import (
     pipe_join,
     spider_is_disabled,
 )
+
+logger = logging.getLogger(__name__)
 
 
 class WikiArtSpider(scrapy.Spider):
@@ -43,9 +47,16 @@ class WikiArtSpider(scrapy.Spider):
         # first run (pipelines create it only after start_requests is consumed),
         # hence the table_exists guard (design D3, Scrapy 2.10 timing).
         db_path = db.default_db_path(self.settings)
-        with closing(db.connect(db_path)) as conn:
-            if db.table_exists(conn, "works"):
-                self.seen |= db.load_seen_urls(conn)
+        try:
+            with closing(db.connect(db_path)) as conn:
+                if db.table_exists(conn, "works"):
+                    self.seen |= db.load_seen_urls(conn)
+        except sqlite3.Error:
+            self.logger.warning(
+                "Failed to seed seen set from %s — dedup across runs "
+                "degrades for this run only",
+                db_path,
+            )
         yield from super().start_requests()
 
     def parse(self, response):

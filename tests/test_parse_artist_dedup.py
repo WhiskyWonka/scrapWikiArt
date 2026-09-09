@@ -1,7 +1,9 @@
 import logging
 import os
+import sqlite3
 import tempfile
 import unittest
+from unittest.mock import patch
 
 import scrapy.http
 from scrapy.settings import Settings
@@ -131,6 +133,35 @@ class TestStartRequestsSeeding(unittest.TestCase):
                 requests = list(spider.start_requests())
             self.assertEqual(requests, [])
             self.assertEqual(spider.seen, set())
+        finally:
+            os.unlink(path)
+
+    def test_db_error_during_seeding_logs_warning_and_continues(self):
+        """F7: If load_seen_urls raises sqlite3.Error, spider still starts."""
+        fd, path = tempfile.mkstemp(suffix=".db")
+        os.close(fd)
+        try:
+            # Create a valid DB with a works table
+            conn = db.connect(path)
+            db.create_tables(conn)
+            db.insert_ignore(conn, "works", {
+                "Id": "a", "URL": "https://www.wikiart.org/en/paintings/one",
+                "scraped_at": "2024-01-01",
+            })
+            conn.close()
+
+            spider = _make_spider(db_path=path, enabled=["wikiart"])
+            # Patch load_seen_urls to raise sqlite3.Error
+            def _explode(conn):
+                raise sqlite3.Error("simulated failure")
+            with patch.object(db, "load_seen_urls", _explode):
+                with self.assertLogs(logging.getLogger(spider.name), level="WARNING"):
+                    requests = list(spider.start_requests())
+            # seen set should be empty but spider still yields its start URLs
+            self.assertEqual(spider.seen, set())
+            self.assertEqual(
+                [r.url for r in requests], spider.start_urls
+            )
         finally:
             os.unlink(path)
 
