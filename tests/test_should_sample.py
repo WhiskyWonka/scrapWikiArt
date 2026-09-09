@@ -58,6 +58,22 @@ class TestShouldSample(unittest.TestCase):
         with self.assertRaises(ValueError):
             should_sample(rng, 1.5)
 
+    def test_non_finite_p_raises(self):
+        """NaN and inf raise ValueError instead of silently skipping forever.
+
+        NaN comparisons are always False, so a bare ``p <= 0 or p > 1``
+        check would let NaN through and return False forever — the gate
+        must reject non-finite values explicitly (parity with the spider's
+        _init_sampling validator).
+        """
+        rng = random.Random(42)
+        with self.assertRaises(ValueError):
+            should_sample(rng, float("nan"))
+        with self.assertRaises(ValueError):
+            should_sample(rng, float("inf"))
+        with self.assertRaises(ValueError):
+            should_sample(rng, float("-inf"))
+
     def test_determinism_same_seed_same_results(self):
         """Same seed + same p → same sequence of True/False."""
         p = 0.5

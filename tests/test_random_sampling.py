@@ -167,6 +167,31 @@ class TestSamplingInit(unittest.TestCase):
         with self.assertRaises(ValueError):
             _make_sampling_spider(p=1.5, seed=None)
 
+    def test_invalid_p_nan_raises(self):
+        """NaN must raise ValueError, not silently skip every URL forever."""
+        with self.assertRaises(ValueError):
+            _make_sampling_spider(p=float("nan"), seed=None)
+
+    def test_numeric_string_p_accepted(self):
+        """CLI ``-s WIKIART_SAMPLE_RATIO=0.5`` yields a str: coerce it."""
+        spider = _make_sampling_spider(p="0.5", seed=None)
+        self.assertEqual(spider._p, 0.5)
+
+    def test_invalid_p_string_raises(self):
+        """Non-numeric string garbage raises ValueError, not TypeError."""
+        with self.assertRaises(ValueError):
+            _make_sampling_spider(p="abc", seed=None)
+
+    def test_none_p_collapses_to_default(self):
+        """Explicit None is 'unset' in Scrapy Settings: get() returns the
+        default 1.0, so the validator never sees None (scrapy/settings
+        __init__.py: ``get`` falls back to default when the stored value is
+        None). Same convention as spider_is_disabled: None behaves like
+        absent. This is documented rather than fought with a three-state
+        ``in`` check — p=1.0 (no sampling) is the fail-safe default."""
+        spider = _make_sampling_spider(p=None, seed=None)
+        self.assertEqual(spider._p, 1.0)
+
     def test_sampling_state_set_by_init(self):
         spider = _make_sampling_spider(p=0.25, seed=42)
         self.assertEqual(spider._p, 0.25)
