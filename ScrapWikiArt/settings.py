@@ -72,3 +72,16 @@ SPIDERS_ENABLED = ["wikiart"]
 # DDG spiders, and the validation script.  All consumers resolve through
 # db.default_db_path(spider.settings) which reads this value.
 WIKIART_DB_PATH = "data/works.db"
+
+# --- Random sampling (WIKIART_SAMPLE_RATIO) -----------------------------------
+# Bernoulli(p) downsampling for the wikiart spider (issue #48): each unseen
+# artwork URL is enqueued with probability p. Default 1.0 is a strict no-op —
+# every unseen artwork is enqueued, matching pre-sampling behavior exactly.
+# p must satisfy 0 < p <= 1; invalid values raise ValueError at spider start.
+# sampling applies ONLY to the wikiart spider; dict spiders never sample.
+WIKIART_SAMPLE_RATIO = 1.0
+
+# Optional deterministic seed for the sampling RNG. None or unset -> the RNG
+# seeds from system entropy (non-deterministic runs). Any integer, INCLUDING
+# 0, is a valid deterministic seed: same seed + same page order -> same subset.
+WIKIART_RANDOM_SEED = None

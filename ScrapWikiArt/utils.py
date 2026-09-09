@@ -1,8 +1,23 @@
 import hashlib
+import random
 import re
 
 import pandas as pd
 from bs4 import BeautifulSoup
+
+
+def should_sample(rng: random.Random, p: float) -> bool:
+    """Bernoulli gate: True -> enqueue, False -> skip.
+
+    Rejects p <= 0 or p > 1 with ValueError (never clamp, never skip
+    silently). Returns True unconditionally when p == 1.0 (no-op, no RNG
+    call). Otherwise samples with probability p: rng.random() < p.
+    """
+    if p <= 0 or p > 1:
+        raise ValueError(f"WIKIART_SAMPLE_RATIO must be > 0 and <= 1, got {p}")
+    if p >= 1.0:
+        return True
+    return rng.random() < p
 
 
 def item_id(url: str) -> str:
