@@ -90,9 +90,13 @@ def default_db_path(settings):
 
 
 def connect(db_path):
-    """Open a SQLite connection, creating parent directories as needed."""
+    """Open a SQLite connection, creating parent directories as needed.
+
+    Uses autocommit mode (isolation_level=None): every INSERT/UPDATE is
+    committed immediately, one transaction per row (design D4, crash-safe).
+    """
     os.makedirs(os.path.dirname(db_path) or ".", exist_ok=True)
-    return sqlite3.connect(db_path)
+    return sqlite3.connect(db_path, isolation_level=None)
 
 
 def create_tables(conn):
@@ -133,20 +137,28 @@ def insert_ignore(conn, table, row):
     """INSERT OR IGNORE a single row dict into the given table.
 
     List-type columns are automatically serialized to JSON via to_db_value.
+    Keys not present in the table schema (e.g. pipeline-only item fields
+    like ``image_urls``/``images``) are silently dropped.
     """
-    columns = []
-    placeholders = []
-    values = []
-    for key, value in row.items():
-        columns.append(key)
-        placeholders.append("?")
-        values.append(to_db_value(value) if key in _LIST_COLUMNS else value)
+    columns = [key for key in row if _column_exists(conn, table, key)]
+    if not columns:
+        return
+    placeholders = ", ".join("?" for _ in columns)
     cols_str = ", ".join(columns)
-    phs_str = ", ".join(placeholders)
+    values = [
+        to_db_value(row[key]) if key in _LIST_COLUMNS else row[key]
+        for key in columns
+    ]
     conn.execute(
-        f"INSERT OR IGNORE INTO {table} ({cols_str}) VALUES ({phs_str})",
+        f"INSERT OR IGNORE INTO {table} ({cols_str}) VALUES ({placeholders})",
         values,
     )
+
+
+def _column_exists(conn, table, column):
+    """Check whether a column exists in a table."""
+    cursor = conn.execute(f"PRAGMA table_info({table})")
+    return any(row[1] == column for row in cursor.fetchall())
 
 
 def update_fields(conn, table, item_id, fields):

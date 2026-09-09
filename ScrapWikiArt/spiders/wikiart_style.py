@@ -10,6 +10,11 @@ class WikiArtArtistSpider(scrapy.Spider):
     name = "wikiart_style"
     allowed_domains = ["wikiart.org"]
     start_urls = ["https://www.wikiart.org/en/paintings-by-style"]
+    custom_settings = {
+        "ITEM_PIPELINES": {
+            "ScrapWikiArt.pipelines.SQLiteDictionaryPipeline": 1,
+        },
+    }
 
     def start_requests(self):
         if spider_is_disabled(self):

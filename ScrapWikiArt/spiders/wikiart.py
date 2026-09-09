@@ -1,7 +1,9 @@
 import scrapy
+from contextlib import closing
 
 from bs4 import BeautifulSoup
 
+from ScrapWikiArt import db
 from ScrapWikiArt.items import ImageItem
 from ScrapWikiArt.utils import (
     image_urls_or_empty,
@@ -19,10 +21,17 @@ class WikiArtSpider(scrapy.Spider):
     start_urls = ["https://www.wikiart.org/en/artists-by-nation"]
     custom_settings = {
         "ITEM_PIPELINES": {
-            'scrapy.pipelines.images.ImagesPipeline': 1,
+            "ScrapWikiArt.pipelines.SQLiteWorksPipeline": 1,
+            "scrapy.pipelines.images.ImagesPipeline": 2,
         },
         "IMAGES_STORE": "data/img",
     }
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        # In-memory dedup set of artwork URLs across the whole crawl run
+        # (design D3). Seeded from the works table in start_requests.
+        self.seen: set[str] = set()
 
     def start_requests(self):
         if spider_is_disabled(self):
@@ -30,6 +39,13 @@ class WikiArtSpider(scrapy.Spider):
                 "Spider %s is disabled via SPIDERS_ENABLED, skipping", self.name
             )
             return
+        # Seed the seen set from the DB. The works table may not exist yet on a
+        # first run (pipelines create it only after start_requests is consumed),
+        # hence the table_exists guard (design D3, Scrapy 2.10 timing).
+        db_path = db.default_db_path(self.settings)
+        with closing(db.connect(db_path)) as conn:
+            if db.table_exists(conn, "works"):
+                self.seen |= db.load_seen_urls(conn)
         yield from super().start_requests()
 
     def parse(self, response):
@@ -41,8 +57,12 @@ class WikiArtSpider(scrapy.Spider):
             yield response.follow(artist + "/all-works/text-list", callback=self.parse_artist)
 
     def parse_artist(self, response):
-        for item in response.xpath('//main/div/ul/li/a/@href').getall():
-            yield response.follow(item, callback=self.parse_item)
+        for href in response.xpath('//main/div/ul/li/a/@href').getall():
+            url = response.urljoin(href)
+            if url in self.seen:
+                continue
+            self.seen.add(url)
+            yield response.follow(url, callback=self.parse_item)
 
     def parse_item(self, response):
         url = response.url

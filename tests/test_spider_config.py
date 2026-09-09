@@ -222,6 +222,29 @@ class TestDuckDuckGoGuard(unittest.TestCase):
             os.unlink(path)
 
 
+class TestPipelineOrdering(unittest.TestCase):
+    """ITEM_PIPELINES wiring across spiders (SP.5, D7)."""
+
+    def test_wikiart_works_pipeline_before_images(self):
+        spider = make_spider("wikiart")
+        pipelines = spider.custom_settings["ITEM_PIPELINES"]
+        self.assertEqual(
+            pipelines["ScrapWikiArt.pipelines.SQLiteWorksPipeline"], 1
+        )
+        self.assertEqual(
+            pipelines["scrapy.pipelines.images.ImagesPipeline"], 2
+        )
+
+    def test_dict_spiders_use_dictionary_pipeline(self):
+        for name in ("wikiart_artist", "wikiart_style", "wikiart_movement", "wikiart_school"):
+            spider = make_spider(name)
+            self.assertEqual(
+                spider.custom_settings["ITEM_PIPELINES"],
+                {"ScrapWikiArt.pipelines.SQLiteDictionaryPipeline": 1},
+                name,
+            )
+
+
 class TestDisabledCrawl(unittest.TestCase):
     """Subprocess E2E: disabled spider exits 0 with the no-op log."""
 
