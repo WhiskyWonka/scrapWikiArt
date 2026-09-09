@@ -176,4 +176,10 @@ if __name__ == '__main__':
         raise SystemExit(1)
 
     with sqlite3.connect(db_path) as conn:
+        # Uses default isolation (not db.connect's autocommit) because
+        # executemany UPDATE batches are wrapped in a single transaction
+        # for atomicity (one commit per checkpoint).  Same WAL/busy_timeout
+        # pragmas as db.connect for safe concurrent access.
+        conn.execute("PRAGMA journal_mode=WAL")
+        conn.execute("PRAGMA busy_timeout=30000")
         validate_works(conn, generate_prompt_meta("painting"), model, args.checkpoint_every)

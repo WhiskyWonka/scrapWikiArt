@@ -15,6 +15,7 @@ from ScrapWikiArt.items import (
     SchoolItem,
     StyleItem,
 )
+from ScrapWikiArt.settings import WIKIART_DB_PATH
 
 # ---------------------------------------------------------------------------
 # Schema DDL — all tables created upfront (design decision D1)
@@ -58,6 +59,8 @@ CREATE TABLE IF NOT EXISTS schools (
 """
 
 # Item-class → table name mapping (design decision D2 / D5)
+# INVARIANT: must NOT contain Updated* subclasses — first-match issubclass
+# dispatch relies on base classes appearing first.
 _ITEM_TABLE_MAP = {
     ImageItem: "works",
     ArtistItem: "artists",
@@ -82,11 +85,12 @@ def default_db_path(settings):
     """Resolve WIKIART_DB_PATH from Scrapy settings, falling back to default.
 
     None-safe: handles settings=None and settings where the key is absent.
+    The default matches settings.py:74 (single source of truth).
     """
     if settings is None:
-        return "data/works.db"
-    val = settings.get("WIKIART_DB_PATH", "data/works.db")
-    return val if val else "data/works.db"
+        return WIKIART_DB_PATH
+    val = settings.get("WIKIART_DB_PATH", WIKIART_DB_PATH)
+    return val if val else WIKIART_DB_PATH
 
 
 def connect(db_path):
@@ -94,9 +98,15 @@ def connect(db_path):
 
     Uses autocommit mode (isolation_level=None): every INSERT/UPDATE is
     committed immediately, one transaction per row (design D4, crash-safe).
+
+    Sets PRAGMA journal_mode=WAL and busy_timeout=30000 for safe concurrent
+    access from multiple processes (e.g. crawl + validation script).
     """
     os.makedirs(os.path.dirname(db_path) or ".", exist_ok=True)
-    return sqlite3.connect(db_path, isolation_level=None)
+    conn = sqlite3.connect(db_path, isolation_level=None)
+    conn.execute("PRAGMA journal_mode=WAL")
+    conn.execute("PRAGMA busy_timeout=30000")
+    return conn
 
 
 def create_tables(conn):
@@ -166,10 +176,30 @@ def insert_ignore(conn, table, row):
     )
 
 
+# Cache for _column_exists results: {id(conn): {table: {columns}}}
+_column_cache: dict[int, dict[str, set[str]]] = {}
+
+
 def _column_exists(conn, table, column):
-    """Check whether a column exists in a table."""
-    cursor = conn.execute(f"PRAGMA table_info({table})")
-    return any(row[1] == column for row in cursor.fetchall())
+    """Check whether a column exists in a table.
+
+    Results are cached per connection to avoid repeated PRAGMA table_info
+    queries per insert (F3 perf fix).
+    """
+    conn_id = id(conn)
+    cache = _column_cache.get(conn_id)
+    if cache is None:
+        cache = {}
+        _column_cache[conn_id] = cache
+    if table not in cache:
+        cursor = conn.execute(f"PRAGMA table_info({table})")
+        cache[table] = {row[1] for row in cursor.fetchall()}
+    return column in cache[table]
+
+
+def _clear_column_cache(conn):
+    """Remove cached column data for a closed connection (cleanup helper)."""
+    _column_cache.pop(id(conn), None)
 
 
 def update_fields(conn, table, item_id, fields):

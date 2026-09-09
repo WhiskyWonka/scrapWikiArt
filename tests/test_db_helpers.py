@@ -30,10 +30,11 @@ from ScrapWikiArt.items import (
 
 
 def _temp_conn():
-    """Open a temp-file SQLite connection (caller must close)."""
+    """Open a temp-file SQLite connection via db.connect (caller must close)."""
     fd, path = tempfile.mkstemp(suffix=".db")
     os.close(fd)
-    conn = sqlite3.connect(path)
+    os.unlink(path)  # connect() creates the file
+    conn = connect(path)
     return conn, path
 
 
@@ -359,6 +360,79 @@ class TestConnect(unittest.TestCase):
             import shutil
             shutil.rmtree(tmpdir, ignore_errors=True)
 
+    def test_sets_wal_journal_mode(self):
+        fd, path = tempfile.mkstemp(suffix=".db")
+        os.close(fd)
+        os.unlink(path)
+        try:
+            conn = connect(path)
+            try:
+                mode = conn.execute("PRAGMA journal_mode").fetchone()[0]
+                self.assertEqual(mode, "wal")
+            finally:
+                conn.close()
+        finally:
+            if os.path.exists(path):
+                os.unlink(path)
 
-if __name__ == "__main__":
-    unittest.main()
+    def test_sets_busy_timeout(self):
+        fd, path = tempfile.mkstemp(suffix=".db")
+        os.close(fd)
+        os.unlink(path)
+        try:
+            conn = connect(path)
+            try:
+                timeout = conn.execute("PRAGMA busy_timeout").fetchone()[0]
+                self.assertEqual(timeout, 30000)
+            finally:
+                conn.close()
+        finally:
+            if os.path.exists(path):
+                os.unlink(path)
+
+
+class TestColumnCache(unittest.TestCase):
+    def test_column_exists_cached_on_connection(self):
+        """_column_exists results are cached; a second call does not re-query PRAGMA."""
+        from ScrapWikiArt.db import _column_exists, _column_cache
+        conn, path = _temp_conn()
+        try:
+            create_tables(conn)
+            # First call populates cache
+            result1 = _column_exists(conn, "works", "Title")
+            self.assertTrue(result1)
+            # Cache should be present for this connection
+            self.assertIn(id(conn), _column_cache)
+            self.assertIn("works", _column_cache[id(conn)])
+            # Second call uses cache (same result)
+            result2 = _column_exists(conn, "works", "Title")
+            self.assertTrue(result2)
+            # Non-existent column still returns False
+            result3 = _column_exists(conn, "works", "NoSuchColumn")
+            self.assertFalse(result3)
+        finally:
+            from ScrapWikiArt.db import _clear_column_cache
+            _clear_column_cache(conn)
+            conn.close()
+            os.unlink(path)
+
+
+class TestInsertIgnoreSilentDrop(unittest.TestCase):
+    def test_unknown_column_not_created(self):
+        """insert_ignore silently drops keys not in the table schema."""
+        conn, path = _temp_conn()
+        try:
+            create_tables(conn)
+            insert_ignore(conn, "works", {
+                "Id": "x", "NoSuchColumn": "y", "scraped_at": "2024",
+            })
+            cursor = conn.execute("SELECT COUNT(*) FROM works WHERE Id = 'x'")
+            self.assertEqual(cursor.fetchone()[0], 1)
+            # NoSuchColumn must not exist as a real column
+            columns = {
+                row[1] for row in conn.execute("PRAGMA table_info(works)").fetchall()
+            }
+            self.assertNotIn("NoSuchColumn", columns)
+        finally:
+            conn.close()
+            os.unlink(path)
