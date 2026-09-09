@@ -3,13 +3,21 @@ import scrapy
 from bs4 import BeautifulSoup
 
 from ScrapWikiArt.items import MovementItem
-from ScrapWikiArt.utils import clean_name, item_id
+from ScrapWikiArt.utils import clean_name, item_id, spider_is_disabled
 
 
 class WikiArtArtistSpider(scrapy.Spider):
     name = "wikiart_movement"
     allowed_domains = ["wikiart.org"]
     start_urls = ["https://www.wikiart.org/en/artists-by-art-movement"]
+
+    def start_requests(self):
+        if spider_is_disabled(self):
+            self.logger.info(
+                "Spider %s is disabled via SPIDERS_ENABLED, skipping", self.name
+            )
+            return
+        yield from super().start_requests()
 
     def parse(self, response):
         for style_url in response.xpath('//ul[@class="dictionaries-list"]/li[@class="dottedItem"]/a/@href').getall():

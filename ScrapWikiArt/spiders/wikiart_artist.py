@@ -3,13 +3,21 @@ import scrapy
 from bs4 import BeautifulSoup
 
 from ScrapWikiArt.items import ArtistItem
-from ScrapWikiArt.utils import clean_whitespace, item_id, labeled_text
+from ScrapWikiArt.utils import clean_whitespace, item_id, labeled_text, spider_is_disabled
 
 
 class WikiArtArtistSpider(scrapy.Spider):
     name = "wikiart_artist"
     allowed_domains = ["wikiart.org"]
     start_urls = ["https://www.wikiart.org/en/artists-by-nation"]
+
+    def start_requests(self):
+        if spider_is_disabled(self):
+            self.logger.info(
+                "Spider %s is disabled via SPIDERS_ENABLED, skipping", self.name
+            )
+            return
+        yield from super().start_requests()
 
     def parse(self, response):
         for nation in response.xpath('//main/ul/li/a/@href').getall():

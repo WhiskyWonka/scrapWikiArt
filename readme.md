@@ -149,6 +149,29 @@ minutes***
 > `runspider` still works, but only use it for one-off debugging when you
 > deliberately want to skip the project configuration.
 
+## Spider enablement (SPIDERS_ENABLED)
+
+`SPIDERS_ENABLED` in `ScrapWikiArt/settings.py` decides which spiders may
+crawl. The default is `["wikiart"]` — only `wikiart` crawls, the other 9
+spiders no-op.
+
+| Setting value | Effect |
+|---------------|--------|
+| `["wikiart"]` (default) | `wikiart` crawls; all other spiders no-op |
+| `["duck_duck_go_artist", "wikiart"]` | Only the named spiders crawl |
+| `[]` | Every spider no-ops (CI-safe kill switch) |
+| unset / `None` | Falls back to the default `["wikiart"]` |
+
+A disabled spider logs `Spider <name> is disabled via SPIDERS_ENABLED,
+skipping` at INFO level, yields zero requests, and exits with code 0 — safe
+for scripts and CI that invoke any spider name. When a spider is enabled it
+crawls exactly as before.
+
+`settings.py` is the ONLY supported configuration point: there is no CLI flag
+to enable or disable spiders, and `scrapy crawl <name> -s SPIDERS_ENABLED=...`
+is an unsupported side channel. Note that `scrapy list` always shows all 10
+spiders regardless of this setting.
+
 ## Output
 
 ### Art Pieces Crawler

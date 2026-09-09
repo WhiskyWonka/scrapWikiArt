@@ -2,7 +2,7 @@ import scrapy
 import json
 import pandas as pd
 from ScrapWikiArt.items import ImageItem
-from ScrapWikiArt.utils import filter_missing_descriptions
+from ScrapWikiArt.utils import filter_missing_descriptions, spider_is_disabled
 
 
 class DuckDuckGoSpider(scrapy.Spider):
@@ -17,6 +17,13 @@ class DuckDuckGoSpider(scrapy.Spider):
         self.input_file = input_file
 
     def start_requests(self):
+        # The disabled check wins over input-file validation (issue #45), so a
+        # disabled spider no-ops cleanly instead of raising CloseSpider.
+        if spider_is_disabled(self):
+            self.logger.info(
+                "Spider %s is disabled via SPIDERS_ENABLED, skipping", self.name
+            )
+            return
         if self.input_file is None:
             raise scrapy.exceptions.CloseSpider('Input file not specified')
 

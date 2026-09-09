@@ -51,3 +51,18 @@ RETRY_HTTP_CODES = [429, 500, 502, 503, 504]
 #     'rotating_proxies.middlewares.BanDetectionMiddleware': 620,
 # }
 # ROTATING_PROXY_LIST_PATH = "proxy_list.txt"
+
+# --- Spider enablement (SPIDERS_ENABLED) --------------------------------------
+# Controls which spiders may crawl (issue #45). A flat list of spider names;
+# groups and aliases are not supported. Disabled spiders no-op cleanly: they
+# log "Spider <name> is disabled via SPIDERS_ENABLED, skipping" at INFO level
+# and exit 0 without yielding any requests.
+#
+# Default ["wikiart"]: only the wikiart spider crawls, the other 9 no-op.
+# Explicit [] disables EVERY spider (CI-safe kill switch). Unset or None falls
+# back to the same default as utils.DEFAULT_ENABLED_SPIDERS.
+#
+# settings.py is the ONLY supported configuration point: there is no CLI flag
+# for enablement, and `scrapy crawl <name> -s SPIDERS_ENABLED=...` is an
+# unsupported side channel.
+SPIDERS_ENABLED = ["wikiart"]
