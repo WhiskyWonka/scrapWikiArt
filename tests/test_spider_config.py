@@ -39,16 +39,18 @@ SPIDER_CLASSES = {
 _UNSET = object()
 
 
-def make_spider(name, enabled=_UNSET, **kwargs):
+def make_spider(name, enabled=_UNSET, db_path=None, **kwargs):
     """Instantiate the spider class for `name` with injected Settings.
 
     Bare spider instances have no `settings` attribute (Scrapy 2.10 sets it
     only in from_crawler), so tests inject `spider.settings` directly.
     """
-    spider = SPIDER_CLASSES[name](**kwargs)
+    spider = SPIDER_CLASSES[name](db_path=db_path, **kwargs)
     settings = Settings()
     if enabled is not _UNSET:
         settings.set("SPIDERS_ENABLED", enabled)
+    if db_path is not None:
+        settings.set("WIKIART_DB_PATH", db_path)
     spider.settings = settings
     return spider
 
@@ -170,11 +172,32 @@ class TestGuards(unittest.TestCase):
 
 
 class TestDuckDuckGoGuard(unittest.TestCase):
-    """The disabled check wins over input-file validation (issue #45)."""
+    """DDG spiders read source data from SQLite (issue #47, DD.1-DD.4)."""
 
-    def test_disabled_without_input_file_no_close_spider(self):
-        spider = make_spider("duck_duck_go_movement")  # default -> disabled
-        self.assertIsNone(spider.input_file)
+    def _temp_db(self):
+        fd, path = tempfile.mkstemp(suffix=".db")
+        os.close(fd)
+        self.addCleanup(os.unlink, path)
+        return path
+
+    def _seed(self, path, table="works", rows=()):
+        from ScrapWikiArt import db
+        conn = db.connect(path)
+        try:
+            db.create_tables(conn)
+            for row in rows:
+                db.insert_ignore(conn, table, row)
+        finally:
+            conn.close()
+
+    def test_no_input_file_attribute(self):
+        # DD.2: no input_file param, no CloseSpider on absence.
+        spider = make_spider("duck_duck_go")
+        self.assertFalse(hasattr(spider, "input_file"))
+
+    def test_disabled_skips_db_read_and_yields_zero(self):
+        # The disabled check wins over everything (issue #45).
+        spider = make_spider("duck_duck_go_movement")
         with self.assertLogs(logging.getLogger(spider.name), level="INFO") as captured:
             requests = list(spider.start_requests())
         self.assertEqual(requests, [])
@@ -184,7 +207,6 @@ class TestDuckDuckGoGuard(unittest.TestCase):
         )
 
     def test_disabled_all_variants_without_input_file(self):
-        # Every DDG variant shares the base guard: zero requests, no raise.
         for name in (
             "duck_duck_go",
             "duck_duck_go_artist",
@@ -197,29 +219,149 @@ class TestDuckDuckGoGuard(unittest.TestCase):
                 requests = list(spider.start_requests())
             self.assertEqual(requests, [], name)
 
-    def test_enabled_without_input_file_still_raises(self):
-        spider = make_spider("duck_duck_go_movement", enabled=["duck_duck_go_movement"])
-        with self.assertRaises(scrapy.exceptions.CloseSpider):
-            list(spider.start_requests())
+    def test_enabled_with_unenriched_rows_yields_requests(self):
+        # Two rows with empty Description AND WikiDescription -> 2 requests.
+        path = self._temp_db()
+        self._seed(path, "works", [
+            {"Id": "a", "URL": "https://a.com", "Title": "Painting A",
+             "Description": "", "WikiDescription": None, "scraped_at": "2024"},
+            {"Id": "b", "URL": "https://b.com", "Title": "Painting B",
+             "Description": None, "WikiDescription": None, "scraped_at": "2024"},
+        ])
+        spider = make_spider(
+            "duck_duck_go",
+            enabled=["duck_duck_go"],
+            db_path=path,
+        )
+        requests = list(spider.start_requests())
+        self.assertEqual(len(requests), 2)
+        self.assertTrue(
+            all(r.url.startswith("https://api.duckduckgo.com/?q=") for r in requests)
+        )
+        # The query is built from the item's query_feature (Title).
+        self.assertTrue(any("q=Painting%20A" in r.url for r in requests))
 
-    def test_enabled_with_input_file_yields_requests(self):
-        # Two empty-Description rows -> two DDG API requests.
-        with tempfile.NamedTemporaryFile(mode="w", suffix=".csv", delete=False) as f:
-            f.write("Name,Description\nRow one,\nRow two,\n")
-            path = f.name
-        try:
-            spider = make_spider(
-                "duck_duck_go_movement",
-                enabled=["duck_duck_go_movement"],
-                input_file=path,
-            )
+    def test_enriched_rows_excluded(self):
+        # A row with WikiDescription filled is NOT re-queried (DD.3).
+        path = self._temp_db()
+        self._seed(path, "works", [
+            {"Id": "a", "URL": "https://a.com", "Title": "Painting A",
+             "Description": "", "WikiDescription": "already enriched",
+             "scraped_at": "2024"},
+        ])
+        spider = make_spider(
+            "duck_duck_go",
+            enabled=["duck_duck_go"],
+            db_path=path,
+        )
+        requests = list(spider.start_requests())
+        self.assertEqual(requests, [])
+
+    def test_empty_table_yields_zero_requests(self):
+        path = self._temp_db()
+        self._seed(path, "works", [])
+        spider = make_spider(
+            "duck_duck_go",
+            enabled=["duck_duck_go"],
+            db_path=path,
+        )
+        self.assertEqual(list(spider.start_requests()), [])
+
+    def test_missing_table_yields_zero_requests_and_warning(self):
+        path = self._temp_db()  # file exists, no tables created
+        spider = make_spider(
+            "duck_duck_go",
+            enabled=["duck_duck_go"],
+            db_path=path,
+        )
+        with self.assertLogs(logging.getLogger(spider.name), level="WARNING") as captured:
             requests = list(spider.start_requests())
-            self.assertEqual(len(requests), 2)
-            self.assertTrue(
-                all(r.url.startswith("https://api.duckduckgo.com/?q=") for r in requests)
+        self.assertEqual(requests, [])
+        self.assertTrue(any("works" in msg for msg in captured.output))
+
+    def test_artist_subclass_reads_from_db(self):
+        # DD.4: duck_duck_go_artist reads the artists table.
+        path = self._temp_db()
+        self._seed(path, "artists", [
+            {"Id": "a1", "Name": "Picasso", "Description": "", "WikiDescription": None},
+        ])
+        spider = make_spider(
+            "duck_duck_go_artist",
+            enabled=["duck_duck_go_artist"],
+            db_path=path,
+        )
+        requests = list(spider.start_requests())
+        self.assertEqual(len(requests), 1)
+        self.assertTrue(any("Picasso" in r.url for r in requests))
+
+    def test_ddg_init_explicit_db_path_parameter(self):
+        """F8: DuckDuckGoSpider.__init__ accepts db_path as an explicit parameter."""
+        spider = make_spider("duck_duck_go", db_path="/custom/path.db")
+        self.assertEqual(spider.db_path, "/custom/path.db")
+
+    def test_ddg_init_no_db_path_defaults_none(self):
+        """F8: Without db_path, defaults to None."""
+        spider = make_spider("duck_duck_go")
+        self.assertIsNone(spider.db_path)
+
+    def test_ddg_subclass_inherits_init(self):
+        """F8: Subclasses inherit the explicit __init__ and instantiate fine."""
+        for name in (
+            "duck_duck_go_artist",
+            "duck_duck_go_style",
+            "duck_duck_go_movement",
+            "duck_duck_go_school",
+        ):
+            spider = make_spider(name, db_path="/test.db")
+            self.assertEqual(spider.db_path, "/test.db", name)
+
+
+class TestDictSpidersSeenAttribute(unittest.TestCase):
+    """CD.3: Dict spiders (artist/style/movement/school) must NOT have a `seen` attr."""
+
+    def test_dict_spiders_no_seen(self):
+        for name in ("wikiart_artist", "wikiart_style", "wikiart_movement", "wikiart_school"):
+            spider = make_spider(name)
+            self.assertFalse(hasattr(spider, "seen"), name)
+
+
+class TestPipelineOrdering(unittest.TestCase):
+    """ITEM_PIPELINES wiring across spiders (SP.5, D7)."""
+
+    def test_wikiart_works_pipeline_before_images(self):
+        spider = make_spider("wikiart")
+        pipelines = spider.custom_settings["ITEM_PIPELINES"]
+        self.assertEqual(
+            pipelines["ScrapWikiArt.pipelines.SQLiteWorksPipeline"], 1
+        )
+        self.assertEqual(
+            pipelines["scrapy.pipelines.images.ImagesPipeline"], 2
+        )
+
+    def test_dict_spiders_use_dictionary_pipeline(self):
+        for name in ("wikiart_artist", "wikiart_style", "wikiart_movement", "wikiart_school"):
+            spider = make_spider(name)
+            self.assertEqual(
+                spider.custom_settings["ITEM_PIPELINES"],
+                {"ScrapWikiArt.pipelines.SQLiteDictionaryPipeline": 1},
+                name,
             )
-        finally:
-            os.unlink(path)
+
+    def test_ddg_spiders_use_update_pipeline(self):
+        # All 5 DDG spiders inherit the base custom_settings (D5).
+        for name in (
+            "duck_duck_go",
+            "duck_duck_go_artist",
+            "duck_duck_go_style",
+            "duck_duck_go_movement",
+            "duck_duck_go_school",
+        ):
+            spider = make_spider(name)
+            self.assertEqual(
+                spider.custom_settings["ITEM_PIPELINES"],
+                {"ScrapWikiArt.pipelines.SQLiteUpdatePipeline": 1},
+                name,
+            )
 
 
 class TestDisabledCrawl(unittest.TestCase):

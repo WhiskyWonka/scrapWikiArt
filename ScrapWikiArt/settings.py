@@ -66,3 +66,9 @@ RETRY_HTTP_CODES = [429, 500, 502, 503, 504]
 # for enablement, and `scrapy crawl <name> -s SPIDERS_ENABLED=...` is an
 # unsupported side channel.
 SPIDERS_ENABLED = ["wikiart"]
+
+# --- SQLite database path -----------------------------------------------------
+# Single source of truth for the SQLite database used by crawl pipelines,
+# DDG spiders, and the validation script.  All consumers resolve through
+# db.default_db_path(spider.settings) which reads this value.
+WIKIART_DB_PATH = "data/works.db"

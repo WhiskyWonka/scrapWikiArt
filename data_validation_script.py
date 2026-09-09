@@ -1,10 +1,16 @@
 import argparse
-from pathlib import Path
+import sqlite3
 
-from huggingface_hub import hf_hub_download
-from llama_cpp import Llama
 import pandas as pd
-from tqdm import tqdm
+
+from ScrapWikiArt import db
+from ScrapWikiArt.settings import WIKIART_DB_PATH
+
+# Fallback used when the setting is absent (keep in sync with settings.py).
+DEFAULT_DB_PATH = WIKIART_DB_PATH
+
+# Keys never included in LLM prompts: pipeline-only fields and DB bookkeeping.
+_PROMPT_SKIP_KEYS = frozenset(["url", "image_urls", "scraped_at", "validatedraw", "validated"])
 
 
 def generate_prompt_meta(df_type):
@@ -13,7 +19,7 @@ def generate_prompt_meta(df_type):
         prompt = f"Review the following information about a {df_type}:\n"
 
         for key, value in row_dict.items():
-            if key.lower() in ['url', 'image_urls']:
+            if key.lower() in _PROMPT_SKIP_KEYS:
                 continue
             prompt += f"{key}: {value}\n"
 
@@ -42,9 +48,9 @@ def build_argument_parser():
         description="Validate WikiDescription fields against LLM judgment"
     )
     parser.add_argument(
-        "--data-dir",
+        "--db-path",
         default=None,
-        help="Directory containing input CSVs (default: <script_dir>/data)",
+        help=f"Path to the SQLite database (default: {DEFAULT_DB_PATH})",
     )
     parser.add_argument(
         "--model-path",
@@ -66,21 +72,67 @@ def build_argument_parser():
     return parser
 
 
-def resolve_data_dir(args):
-    if args.data_dir is not None:
-        return Path(args.data_dir)
-    return Path(__file__).resolve().parent / "data"
+def resolve_db_path(args):
+    """Resolve the DB path: explicit --db-path wins, else the settings default."""
+    if args.db_path is not None:
+        return args.db_path
+    return DEFAULT_DB_PATH
+
+
+def load_works(conn):
+    """Read every works row for validation (DV.2/DV.4: single-pass replace of
+    the old 5-file CSV jobs list)."""
+    return pd.read_sql("SELECT * FROM works", conn)
+
+
+def _validated_to_db(v):
+    """Coerce the boolean Validated flag into a stable text value.
+
+    The works.Validated column is TEXT: raw bools would be stored as '1'/'0'
+    via SQLite's TEXT affinity, diverging from the old CSV output ("True"/"False").
+    None stays NULL (unparseable model response).
+    """
+    if v is True:
+        return "True"
+    if v is False:
+        return "False"
+    return None
+
+
+def write_validation(conn, df):
+    """Persist ValidatedRaw/Validated back to the works table.
+
+    executemany UPDATE per checkpoint + final (design D6). Deliberately NOT
+    df.to_sql(): to_sql(if_exists='replace') recreates the table and drops the
+    Id PRIMARY KEY, breaking future INSERT OR IGNORE dedup; append would
+    duplicate rows. Spec DV.3 intent (columns persisted) is met.
+    """
+    rows = [
+        (row.ValidatedRaw, _validated_to_db(row.Validated), row.Id)
+        for row in df[["ValidatedRaw", "Validated", "Id"]].itertuples(index=False)
+    ]
+    if not rows:
+        return
+    conn.executemany(
+        "UPDATE works SET ValidatedRaw = ?, Validated = ? WHERE Id = ?",
+        rows,
+    )
+    conn.commit()
 
 
 def load_model(model_path_str, gpu_layers):
+    from llama_cpp import Llama  # lazy: heavy native dependency
+
     model_kwargs = {"n_gqa": 8, "n_ctx": 8192}
     if gpu_layers is not None:
         model_kwargs["n_gpu_layers"] = gpu_layers
     return Llama(model_path=model_path_str, **model_kwargs)
 
 
-def validate_file(data_dir, input_file, generate_prompt, output_file, model, checkpoint_every):
-    df = pd.read_csv(data_dir / input_file)
+def validate_works(conn, generate_prompt, model, checkpoint_every):
+    from tqdm import tqdm  # lazy: not needed for tests
+
+    df = load_works(conn)
 
     processed_count = 0
 
@@ -94,9 +146,9 @@ def validate_file(data_dir, input_file, generate_prompt, output_file, model, che
         processed_count += 1
         if processed_count % checkpoint_every == 0:
             print(f"Processed {processed_count} records")
-            df.to_csv(data_dir / output_file)
+            write_validation(conn, df)
 
-    df.to_csv(data_dir / output_file)
+    write_validation(conn, df)
     # Avoid duplicating the checkpoint message when the total is an exact
     # multiple of checkpoint_every (e.g. 100 records with --checkpoint-every 100).
     if processed_count % checkpoint_every != 0:
@@ -105,10 +157,12 @@ def validate_file(data_dir, input_file, generate_prompt, output_file, model, che
 
 
 if __name__ == '__main__':
+    from huggingface_hub import hf_hub_download  # lazy: heavy dependency
+
     args = build_argument_parser().parse_args()
 
-    data_dir = resolve_data_dir(args)
-    print(f"Data directory: {data_dir}")
+    db_path = resolve_db_path(args)
+    print(f"Database: {db_path}")
 
     model_path = args.model_path or hf_hub_download(
         repo_id="TheBloke/Mistral-7B-Instruct-v0.1-GGUF",
@@ -121,16 +175,11 @@ if __name__ == '__main__':
         print(f"Failed to load model {model_path}: {exc}")
         raise SystemExit(1)
 
-    jobs = [
-        ('data_update.csv', generate_prompt_meta("painting"), 'data_validated.csv'),
-        ('artist_update.csv', generate_prompt_meta("artist"), 'artist_validated.csv'),
-        ('movements_update.csv', generate_prompt_meta("art movement"), 'movement_validated.csv'),
-        ('schools_update.csv', generate_prompt_meta("art school"), 'school_validated.csv'),
-        ('styles_update.csv', generate_prompt_meta("art style"), 'styles_validated.csv'),
-    ]
-
-    for input_file, generate_prompt, output_file in jobs:
-        try:
-            validate_file(data_dir, input_file, generate_prompt, output_file, model, args.checkpoint_every)
-        except Exception as exc:
-            print(f"Failed to process {input_file}: {exc}")
+    with sqlite3.connect(db_path) as conn:
+        # Uses default isolation (not db.connect's autocommit) because
+        # executemany UPDATE batches are wrapped in a single transaction
+        # for atomicity (one commit per checkpoint).  Same WAL/busy_timeout
+        # pragmas as db.connect for safe concurrent access.
+        conn.execute("PRAGMA journal_mode=WAL")
+        conn.execute("PRAGMA busy_timeout=30000")
+        validate_works(conn, generate_prompt_meta("painting"), model, args.checkpoint_every)

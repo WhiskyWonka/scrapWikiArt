@@ -32,7 +32,7 @@ In addition to the primary crawlers, the project includes DuckDuckGo spiders for
 - **duck_duck_go_movement.py**: Updates information about art movements.
 - **duck_duck_go_school.py**: Updates information about art schools.
 
-These DuckDuckGo spiders enhance and maintain the data integrity by fetching updated information for paintings, artists, styles, movements, and schools based on the existing datasets.
+These DuckDuckGo spiders enhance and maintain the data integrity by fetching updated information for paintings, artists, styles, movements, and schools, reading unenriched rows from the database and writing the fetched descriptions back.
 
 **Scraped Information for Artworks:**
 - URL
@@ -124,18 +124,26 @@ minutes***
 
 `pip install -r requirements-validation.txt`
 
-| Crawler | Command                                                                                                                               |
-|---------|---------------------------------------------------------------------------------------------------------------------------------------|
-| Art Pieces Crawler | `scrapy crawl wikiart -o data/data.csv -t csv`                                                                                  |
-| Artists Crawler | `scrapy crawl wikiart_artist -o data/artists.csv -t csv`                                                                        |
-| Styles Crawler | `scrapy crawl wikiart_style -o data/styles.csv -t csv`                                                                          |
-| Movements Crawler | `scrapy crawl wikiart_movement -o data/movements.csv -t csv`                                                                    |
-| Schools Crawler | `scrapy crawl wikiart_school -o data/schools.csv -t csv`                                                                        |
-| DuckDuckGo Crawler | `scrapy crawl duck_duck_go -a input_file=data/data.csv -o data/data_update.csv -t csv`                                       |
-| DuckDuckGo Artist Spider | `scrapy crawl duck_duck_go_artist -a input_file=data/artists.csv -o data/artist_update.csv -t csv`                         |
-| DuckDuckGo Styles Spider | `scrapy crawl duck_duck_go_style -a input_file=data/styles.csv -o data/styles_update.csv -t csv`                           |
-| DuckDuckGo Movements Spider | `scrapy crawl duck_duck_go_movement -a input_file=data/movements.csv -o data/movements_update.csv -t csv`               |
-| DuckDuckGo Schools Spider | `scrapy crawl duck_duck_go_school -a input_file=data/schools.csv -o data/schools_update.csv -t csv`                      |
+| Crawler | Command |
+|---------|---------|
+| Art Pieces Crawler | `scrapy crawl wikiart` |
+| Artists Crawler | `scrapy crawl wikiart_artist` |
+| Styles Crawler | `scrapy crawl wikiart_style` |
+| Movements Crawler | `scrapy crawl wikiart_movement` |
+| Schools Crawler | `scrapy crawl wikiart_school` |
+| DuckDuckGo Crawler | `scrapy crawl duck_duck_go` |
+| DuckDuckGo Artist Spider | `scrapy crawl duck_duck_go_artist` |
+| DuckDuckGo Styles Spider | `scrapy crawl duck_duck_go_style` |
+| DuckDuckGo Movements Spider | `scrapy crawl duck_duck_go_movement` |
+| DuckDuckGo Schools Spider | `scrapy crawl duck_duck_go_school` |
+| Validate with LLM | `python data_validation_script.py` |
+
+All data — crawl results, DuckDuckGo enrichments, and validation output — is
+stored in a single SQLite database at `WIKIART_DB_PATH` (default
+`data/works.db`), replacing the previous per-crawler CSV files. There is no
+`-o data/*.csv -t csv` output and no `-a input_file=...` argument for the
+DuckDuckGo spiders: they read rows directly from the database and write
+fetched enrichments back.
 
 > **Why `scrapy crawl` and not `scrapy runspider`?**
 >
@@ -174,28 +182,39 @@ spiders regardless of this setting.
 
 ## Output
 
+All scraped and enriched data is stored in a single SQLite database at
+`WIKIART_DB_PATH` (defined in `ScrapWikiArt/settings.py`, default
+`data/works.db`). The database holds one table per entity type:
+
+| Table | Populated by | Contents |
+|-------|--------------|----------|
+| `works` | `wikiart` spider | Artwork rows (Id, URL, Title, Author, Date, Styles, Genre, Media, Location, Dimensions, Description, WikiDescription, WikiLink, Tags, ...) |
+| `artists` | `wikiart_artist` spider | Artist rows |
+| `styles` | `wikiart_style` spider | Art style rows |
+| `movements` | `wikiart_movement` spider | Art movement rows |
+| `schools` | `wikiart_school` spider | Art school rows |
+
+The `Id` column is a SHA-1 of the item URL and is the primary key of every
+table. DuckDuckGo spiders read unenriched rows (missing `Description`/`WikiDescription`)
+and write fetched `WikiDescription`/`WikiLink` values back to the same rows.
+The validation script writes `ValidatedRaw`/`Validated` columns back to the
+`works` table via `UPDATE` — it does not recreate or replace the table.
+
 ### Art Pieces Crawler
 
 Image download is handled by Scrapy's `ImagesPipeline` (enabled via
 `custom_settings` in the spider): the pipeline downloads the images listed
 in the item's `image_urls` field into the `IMAGES_STORE` folder. By default
-images go to `data/img` and data is saved in `data/data.csv`.
+images go to `data/img`.
 
 The download folder may be changed by editing `IMAGES_STORE` in the
 spider's `custom_settings` (`ScrapWikiArt/spiders/wikiart.py`).
 
-### Artists Crawler
+### Dedup semantics
 
-By default, data will be saved in `data/artists.csv`.
-
-### Styles Crawler
-
-By default, data will be saved in `data/styles.csv`.
-
-### Movements Crawler
-
-By default, data will be saved in `data/movements.csv`.
-
-### Schools Crawler
-
-By default, data will be saved in `data/schools.csv`.
+Artwork crawling is idempotent across runs: the `wikiart` spider keeps an
+in-memory `seen` set of artwork URLs seeded from the `works` table, so
+re-runs skip artworks that are already stored and issue no HTTP requests for
+them. Dictionary crawlers (`wikiart_artist`, `_style`, `_movement`, `_school`)
+rely on `INSERT OR IGNORE` — rows with an existing `Id` are skipped. To start
+from scratch, delete `data/works.db` (the `data/` directory is gitignored).
