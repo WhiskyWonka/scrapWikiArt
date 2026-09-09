@@ -1,4 +1,6 @@
 import logging
+import math
+import random
 import sqlite3
 import scrapy
 from contextlib import closing
@@ -12,6 +14,7 @@ from ScrapWikiArt.utils import (
     item_id,
     labeled_text,
     pipe_join,
+    should_sample,
     spider_is_disabled,
 )
 
@@ -36,6 +39,12 @@ class WikiArtSpider(scrapy.Spider):
         # In-memory dedup set of artwork URLs across the whole crawl run
         # (design D3). Seeded from the works table in start_requests.
         self.seen: set[str] = set()
+        # Sampling state is created by _init_sampling() in start_requests
+        # (self.settings is unavailable in __init__). None sentinels keep
+        # parse_artist inert (no-op) when called outside a start_requests
+        # flow — e.g. directly from tests.
+        self._p: float | None = None
+        self._rng: random.Random | None = None
 
     def start_requests(self):
         if spider_is_disabled(self):
@@ -57,7 +66,47 @@ class WikiArtSpider(scrapy.Spider):
                 "degrades for this run only",
                 db_path,
             )
+        self._init_sampling()
         yield from super().start_requests()
+
+    def _init_sampling(self):
+        """Read and validate sampling settings, create the RNG (issue #48).
+
+        Reads WIKIART_SAMPLE_RATIO (default 1.0, must satisfy 0 < p <= 1)
+        and WIKIART_RANDOM_SEED.  Numeric strings (e.g. from the ``-s``
+        CLI side channel) are coerced with ``float()``; non-numeric or
+        non-finite values raise ValueError.  Three-state seed detection:
+        key absent or None -> non-deterministic; any integer including 0
+        -> deterministic.
+        """
+        raw_p = self.settings.get("WIKIART_SAMPLE_RATIO", 1.0)
+        # Numeric strings (CLI ``-s`` side channel) are coerced so the
+        # documented ValueError contract holds for garbage instead of the
+        # raw comparison's TypeError. Note: an explicit None never reaches
+        # this code — Scrapy Settings.get() collapses stored None to the
+        # default (1.0), same convention as spider_is_disabled. The
+        # float() guard below only fires for non-str garbage when the
+        # settings object does not collapse None (e.g. direct calls).
+        if not isinstance(raw_p, (int, float)):
+            try:
+                p = float(raw_p)
+            except (TypeError, ValueError) as exc:
+                raise ValueError(
+                    f"WIKIART_SAMPLE_RATIO must be > 0 and <= 1, got {raw_p!r}"
+                ) from exc
+        else:
+            p = raw_p
+        if not math.isfinite(p) or not (0 < p <= 1):
+            raise ValueError(
+                f"WIKIART_SAMPLE_RATIO must be > 0 and <= 1, got {p}"
+            )
+        # Scrapy Settings.get returns None for missing keys, so an absent
+        # key, an explicit None, and the default all converge to a
+        # non-deterministic RNG (random.Random(None)). seed 0 stays valid:
+        # get() returns 0 and Random(0) is deterministic.
+        seed = self.settings.get("WIKIART_RANDOM_SEED")
+        self._p = p
+        self._rng = random.Random(seed)
 
     def parse(self, response):
         for nation in response.xpath('//main/ul/li/a/@href').getall():
@@ -73,6 +122,12 @@ class WikiArtSpider(scrapy.Spider):
             if url in self.seen:
                 continue
             self.seen.add(url)
+            # seen-add ALWAYS precedes sampling (design invariant): a URL
+            # rejected here is marked seen and never re-evaluated. The
+            # _p is None guard keeps the gate inert when parse_artist is
+            # called directly without start_requests (tests only).
+            if self._p is not None and not should_sample(self._rng, self._p):
+                continue
             yield response.follow(url, callback=self.parse_item)
 
     def parse_item(self, response):

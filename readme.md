@@ -180,6 +180,28 @@ to enable or disable spiders, and `scrapy crawl <name> -s SPIDERS_ENABLED=...`
 is an unsupported side channel. Note that `scrapy list` always shows all 10
 spiders regardless of this setting.
 
+## Random sampling (WIKIART_SAMPLE_RATIO)
+
+The `wikiart` spider can downsample artwork crawling: each *unseen* artwork
+URL is enqueued with probability `p` (a Bernoulli gate). This lets operators
+run smaller representative subsets of the full crawl. Settings live in
+`ScrapWikiArt/settings.py`:
+
+| Setting | Default | Meaning |
+|---------|---------|---------|
+| `WIKIART_SAMPLE_RATIO` | `1.0` | Probability `0 < p <= 1` that an unseen artwork URL is enqueued. `1.0` is a strict no-op — every unseen artwork is enqueued. Values `<= 0` or `> 1` raise `ValueError` at spider start (never clamped). |
+| `WIKIART_RANDOM_SEED` | `None` | Optional deterministic seed. `None` or unset -> the RNG seeds from system entropy (non-deterministic runs). Any integer, **including `0`**, is a valid deterministic seed: same seed + same page order -> the same subset is enqueued every run. |
+
+Sampling applies **only** to the `wikiart` artwork crawler. The dictionary
+spiders (`wikiart_artist`, `wikiart_style`, `wikiart_movement`,
+`wikiart_school`) never sample.
+
+Dedupe always wins over sampling: a URL already in the `seen` set (from the
+current run or seeded from the `works` table) is skipped before any sampling
+decision. When sampling rejects an unseen URL, the URL is still marked as
+seen, so a later pass over the same page does not re-evaluate it — exactly
+`p`-fraction of *new* artworks are ever enqueued per run.
+
 ## Output
 
 All scraped and enriched data is stored in a single SQLite database at

@@ -324,6 +324,14 @@ class TestDictSpidersSeenAttribute(unittest.TestCase):
             spider = make_spider(name)
             self.assertFalse(hasattr(spider, "seen"), name)
 
+    def test_dict_spiders_no_sampling(self):
+        """Spec: sampling is exclusive to the wikiart spider (issue #48)."""
+        for name in ("wikiart_artist", "wikiart_style", "wikiart_movement", "wikiart_school"):
+            spider = make_spider(name)
+            self.assertFalse(hasattr(spider, "_p"), name)
+            self.assertFalse(hasattr(spider, "_rng"), name)
+            self.assertFalse(hasattr(spider, "_init_sampling"), name)
+
 
 class TestPipelineOrdering(unittest.TestCase):
     """ITEM_PIPELINES wiring across spiders (SP.5, D7)."""
