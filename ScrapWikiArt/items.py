@@ -22,6 +22,7 @@ class ImageItem(scrapy.Item):
     WikiDescription = scrapy.Field()
     WikiLink = scrapy.Field()
     Tags = scrapy.Field()
+    ImagePath = scrapy.Field()
     image_urls = scrapy.Field()
     images = scrapy.Field()
 

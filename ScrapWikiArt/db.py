@@ -28,6 +28,7 @@ CREATE TABLE IF NOT EXISTS works (
   Series TEXT, SeriesLink TEXT, Genre TEXT, GenreLink TEXT, Media TEXT,
   Location TEXT, Dimensions TEXT, Description TEXT, WikiDescription TEXT,
   WikiLink TEXT, Tags TEXT,
+  ImagePath TEXT,
   scraped_at TEXT NOT NULL,
   ValidatedRaw TEXT, Validated TEXT
 );
@@ -170,7 +171,7 @@ def insert_ignore(conn, table, row):
         to_db_value(row[key]) if key in _LIST_COLUMNS else row[key]
         for key in columns
     ]
-    conn.execute(
+    return conn.execute(
         f"INSERT OR IGNORE INTO {table} ({cols_str}) VALUES ({placeholders})",
         values,
     )

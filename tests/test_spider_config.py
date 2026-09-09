@@ -337,13 +337,15 @@ class TestPipelineOrdering(unittest.TestCase):
     """ITEM_PIPELINES wiring across spiders (SP.5, D7)."""
 
     def test_wikiart_works_pipeline_before_images(self):
+        # Assertions swapped: ImagesPipeline (priority 1) now runs BEFORE
+        # SQLiteWorksPipeline (priority 2) so `images` is populated first.
         spider = make_spider("wikiart")
         pipelines = spider.custom_settings["ITEM_PIPELINES"]
         self.assertEqual(
-            pipelines["ScrapWikiArt.pipelines.SQLiteWorksPipeline"], 1
+            pipelines["scrapy.pipelines.images.ImagesPipeline"], 1
         )
         self.assertEqual(
-            pipelines["scrapy.pipelines.images.ImagesPipeline"], 2
+            pipelines["ScrapWikiArt.pipelines.SQLiteWorksPipeline"], 2
         )
 
     def test_dict_spiders_use_dictionary_pipeline(self):
