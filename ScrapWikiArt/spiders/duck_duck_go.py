@@ -20,10 +20,20 @@ class DuckDuckGoSpider(scrapy.Spider):
 
     item_class = ImageItem
     query_feature = 'Title'
-    # Columns that must be missing for a row to be re-queried. Computed as a
-    # class attribute from the item's declared fields (design D5): the base
-    # spider and the artist spider check both Description and WikiDescription.
-    missing_columns = ["Description", "WikiDescription"]
+
+    @property
+    def missing_columns(self):
+        """Columns that must be missing for a row to be re-queried (design D5).
+
+        Computed from the item's declared fields: works/artists rows check both
+        Description and WikiDescription; the dict spiders' Updated* items do
+        too, so style/movement/school rows are only re-queried while they still
+        lack a wiki description (idempotent re-runs).
+        """
+        columns = ["Description"]
+        if "WikiDescription" in self.item_class.fields:
+            columns.append("WikiDescription")
+        return columns
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)

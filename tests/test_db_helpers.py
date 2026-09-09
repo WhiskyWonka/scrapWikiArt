@@ -11,6 +11,7 @@ from ScrapWikiArt.db import (
     insert_ignore,
     load_seen_urls,
     table_exists,
+    table_for_class,
     table_for_item,
     to_db_value,
     unenriched_sql,
@@ -151,6 +152,25 @@ class TestTableForItem(unittest.TestCase):
     def test_unknown_item_returns_none(self):
         item = object()
         self.assertIsNone(table_for_item(item))
+
+
+class TestTableForClass(unittest.TestCase):
+    def test_class_dispatch(self):
+        self.assertEqual(table_for_class(ImageItem), "works")
+        self.assertEqual(table_for_class(ArtistItem), "artists")
+        self.assertEqual(table_for_class(StyleItem), "styles")
+        self.assertEqual(table_for_class(MovementItem), "movements")
+        self.assertEqual(table_for_class(SchoolItem), "schools")
+
+    def test_updated_classes_map_to_base_tables(self):
+        # DDG dict spiders use Updated* classes; they must resolve to the
+        # same tables their crawlers populated.
+        self.assertEqual(table_for_class(UpdatedStyleItem), "styles")
+        self.assertEqual(table_for_class(UpdatedMovementItem), "movements")
+        self.assertEqual(table_for_class(UpdatedSchoolItem), "schools")
+
+    def test_unknown_class_returns_none(self):
+        self.assertIsNone(table_for_class(dict))
 
 
 class TestInsertIgnore(unittest.TestCase):

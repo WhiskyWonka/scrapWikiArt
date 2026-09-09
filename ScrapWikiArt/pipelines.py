@@ -5,8 +5,6 @@
 
 from datetime import datetime, timezone
 
-from itemadapter import ItemAdapter
-
 from ScrapWikiArt import db
 from ScrapWikiArt.items import ImageItem
 
