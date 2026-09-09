@@ -98,6 +98,16 @@ class TestSpiderIsDisabled(unittest.TestCase):
             else:
                 self.assertTrue(spider_is_disabled(spider), name)
 
+    def test_comma_string_strips_entries(self):
+        # Entries with surrounding whitespace must not silently misconfigure:
+        # "wikiart, wikiart_artist" enables both, never " wikiart_artist".
+        for name in SPIDER_CLASSES:
+            spider = make_spider(name, enabled="wikiart, wikiart_artist")
+            if name in ("wikiart", "wikiart_artist"):
+                self.assertFalse(spider_is_disabled(spider), name)
+            else:
+                self.assertTrue(spider_is_disabled(spider), name)
+
 
 class TestGuards(unittest.TestCase):
     """start_requests() no-op behavior for disabled spiders."""

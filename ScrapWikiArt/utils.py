@@ -115,5 +115,5 @@ def spider_is_disabled(spider):
     else:
         enabled = settings.get("SPIDERS_ENABLED", DEFAULT_ENABLED_SPIDERS)
         if isinstance(enabled, str):
-            enabled = enabled.split(",")
+            enabled = [entry.strip() for entry in enabled.split(",")]
     return spider.name not in enabled
