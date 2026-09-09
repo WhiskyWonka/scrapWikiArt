@@ -64,6 +64,7 @@ class TestSQLiteWorksPipeline(unittest.TestCase):
             "Author": "Test Author",
             "Description": "A test",
             "image_urls": ["https://example.com/img.jpg"],
+            "images": [{"path": "full/abc.jpg"}],
         })
         result = p.process_item(item, MagicMock())
         self.assertIs(result, item)
@@ -76,8 +77,10 @@ class TestSQLiteWorksPipeline(unittest.TestCase):
 
     def test_duplicate_id_ignored(self):
         p, _ = self._make_pipeline()
-        item1 = ImageItem({"Id": "dup", "Title": "First", "URL": "u"})
-        item2 = ImageItem({"Id": "dup", "Title": "Second", "URL": "u"})
+        item1 = ImageItem({"Id": "dup", "Title": "First", "URL": "u",
+                           "images": [{"path": "full/first.jpg"}]})
+        item2 = ImageItem({"Id": "dup", "Title": "Second", "URL": "u",
+                           "images": [{"path": "full/second.jpg"}]})
         p.process_item(item1, MagicMock())
         p.process_item(item2, MagicMock())
         conn = sqlite3.connect(self.db_path)
@@ -108,6 +111,7 @@ class TestSQLiteWorksPipeline(unittest.TestCase):
             "Tags": ["tag1", "tag2"],
             "Media": ["oil"],
             "URL": "u",
+            "images": [{"path": "full/lst.jpg"}],
         })
         p.process_item(item, MagicMock())
         conn = sqlite3.connect(self.db_path)
@@ -125,6 +129,158 @@ class TestSQLiteWorksPipeline(unittest.TestCase):
         p.close_spider(MagicMock())
         # After close, the pipeline's conn should be None
         self.assertIsNone(p.conn)
+
+    def test_no_images_skips_insert(self):
+        p, _ = self._make_pipeline()
+        item = ImageItem({"Id": "noimg", "Title": "No image work", "images": []})
+        result = p.process_item(item, MagicMock())
+        self.assertIs(result, item)
+        conn = sqlite3.connect(self.db_path)
+        try:
+            cursor = conn.execute("SELECT COUNT(*) FROM works WHERE Id = 'noimg'")
+            self.assertEqual(cursor.fetchone()[0], 0)
+        finally:
+            conn.close()
+
+    def test_no_images_key_skips_insert(self):
+        p, _ = self._make_pipeline()
+        item = ImageItem({
+            "Id": "nokey", "Title": "No images key",
+            "image_urls": ["https://example.com/img.jpg"],
+        })
+        result = p.process_item(item, MagicMock())
+        self.assertIs(result, item)
+        conn = sqlite3.connect(self.db_path)
+        try:
+            cursor = conn.execute("SELECT COUNT(*) FROM works WHERE Id = 'nokey'")
+            self.assertEqual(cursor.fetchone()[0], 0)
+        finally:
+            conn.close()
+
+    def test_no_images_emits_debug_log(self):
+        p, _ = self._make_pipeline()
+        item = ImageItem({"Id": "nolog", "Title": "No image work", "images": []})
+        with self.assertLogs("ScrapWikiArt.pipelines", level="DEBUG") as captured:
+            p.process_item(item, MagicMock())
+        self.assertEqual(
+            captured.output,
+            ["DEBUG:ScrapWikiArt.pipelines:No image for nolog — skipping DB insert"],
+        )
+
+    def test_image_path_extracted(self):
+        p, _ = self._make_pipeline()
+        item = ImageItem({
+            "Id": "img1",
+            "Title": "With image",
+            "images": [{"path": "full/abc.jpg"}],
+        })
+        p.process_item(item, MagicMock())
+        conn = sqlite3.connect(self.db_path)
+        try:
+            cursor = conn.execute("SELECT ImagePath FROM works WHERE Id = 'img1'")
+            self.assertEqual(cursor.fetchone(), ("full/abc.jpg",))
+        finally:
+            conn.close()
+
+    def test_duplicate_null_path_filled(self):
+        p, _ = self._make_pipeline()
+        conn = connect(self.db_path)
+        try:
+            conn.execute(
+                "INSERT INTO works (Id, Title, scraped_at, ImagePath) "
+                "VALUES ('dupnull', 'T', '2024', NULL)"
+            )
+        finally:
+            conn.close()
+        item = ImageItem({"Id": "dupnull", "Title": "T",
+                          "images": [{"path": "full/new.jpg"}]})
+        p.process_item(item, MagicMock())
+        conn = sqlite3.connect(self.db_path)
+        try:
+            cursor = conn.execute("SELECT ImagePath FROM works WHERE Id = 'dupnull'")
+            self.assertEqual(cursor.fetchone(), ("full/new.jpg",))
+        finally:
+            conn.close()
+
+    def test_duplicate_existing_path_not_overwritten(self):
+        p, _ = self._make_pipeline()
+        conn = connect(self.db_path)
+        try:
+            conn.execute(
+                "INSERT INTO works (Id, Title, scraped_at, ImagePath) "
+                "VALUES ('duppath', 'T', '2024', 'full/old.jpg')"
+            )
+        finally:
+            conn.close()
+        item = ImageItem({"Id": "duppath", "Title": "T",
+                          "images": [{"path": "full/new.jpg"}]})
+        p.process_item(item, MagicMock())
+        conn = sqlite3.connect(self.db_path)
+        try:
+            cursor = conn.execute("SELECT ImagePath FROM works WHERE Id = 'duppath'")
+            self.assertEqual(cursor.fetchone(), ("full/old.jpg",))
+        finally:
+            conn.close()
+
+    def test_multiple_images_first_wins(self):
+        p, _ = self._make_pipeline()
+        item = ImageItem({
+            "Id": "multi",
+            "Title": "T",
+            "images": [{"path": "a.jpg"}, {"path": "b.jpg"}],
+        })
+        p.process_item(item, MagicMock())
+        conn = sqlite3.connect(self.db_path)
+        try:
+            cursor = conn.execute("SELECT ImagePath FROM works WHERE Id = 'multi'")
+            self.assertEqual(cursor.fetchone(), ("a.jpg",))
+        finally:
+            conn.close()
+
+    def test_insert_ignore_returns_cursor(self):
+        path = _temp_db_path()
+        try:
+            conn = connect(path)
+            try:
+                create_tables(conn)
+                cursor = insert_ignore(conn, "works", {
+                    "Id": "cur1", "Title": "T", "scraped_at": "2024",
+                })
+                self.assertEqual(cursor.rowcount, 1)
+                # Same Id again -> INSERT OR IGNORE skips -> rowcount 0
+                cursor2 = insert_ignore(conn, "works", {
+                    "Id": "cur1", "Title": "T", "scraped_at": "2024",
+                })
+                self.assertEqual(cursor2.rowcount, 0)
+            finally:
+                conn.close()
+        finally:
+            if os.path.exists(path):
+                os.unlink(path)
+
+    def test_image_urls_empty_no_row(self):
+        p, _ = self._make_pipeline()
+        item = ImageItem({"Id": "noimgs", "Title": "T", "image_urls": []})
+        result = p.process_item(item, MagicMock())
+        self.assertIs(result, item)
+        conn = sqlite3.connect(self.db_path)
+        try:
+            cursor = conn.execute("SELECT COUNT(*) FROM works WHERE Id = 'noimgs'")
+            self.assertEqual(cursor.fetchone()[0], 0)
+        finally:
+            conn.close()
+
+    def test_no_image_urls_key_no_row(self):
+        p, _ = self._make_pipeline()
+        item = ImageItem({"Id": "nourl", "Title": "T"})
+        result = p.process_item(item, MagicMock())
+        self.assertIs(result, item)
+        conn = sqlite3.connect(self.db_path)
+        try:
+            cursor = conn.execute("SELECT COUNT(*) FROM works WHERE Id = 'nourl'")
+            self.assertEqual(cursor.fetchone()[0], 0)
+        finally:
+            conn.close()
 
 
 class TestSQLiteDictionaryPipeline(unittest.TestCase):
@@ -236,7 +392,8 @@ class TestPipelineDBErrorResilience(unittest.TestCase):
 
     def test_works_pipeline_returns_item_on_db_error(self):
         p, spider = self._make_pipeline_and_corrupt(SQLiteWorksPipeline)
-        item = ImageItem({"Id": "e1", "URL": "u"})
+        item = ImageItem({"Id": "e1", "URL": "u",
+                          "images": [{"path": "full/e1.jpg"}]})
         with self.assertLogs("ScrapWikiArt.pipelines", level="WARNING") as cm:
             result = p.process_item(item, spider)
         self.assertIs(result, item)
@@ -266,7 +423,8 @@ class TestPipelineDBErrorResilience(unittest.TestCase):
     def test_db_errors_counter_increments(self):
         p, spider = self._make_pipeline_and_corrupt(SQLiteWorksPipeline)
         for i in range(3):
-            item = ImageItem({"Id": f"err{i}", "URL": "u"})
+            item = ImageItem({"Id": f"err{i}", "URL": "u",
+                              "images": [{"path": f"full/err{i}.jpg"}]})
             with self.assertLogs("ScrapWikiArt.pipelines", level="WARNING"):
                 p.process_item(item, spider)
         self.assertEqual(p._db_errors, 3)

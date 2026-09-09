@@ -26,8 +26,8 @@ class ScrapwikiartPipeline:
 class SQLiteWorksPipeline:
     """Persist ImageItem rows into the works table via INSERT OR IGNORE.
 
-    Priority 1 in the wikiart spider — runs before ImagesPipeline (priority 2)
-    so the DB row exists before images are downloaded.
+    Priority 2 in the wikiart spider — runs after ImagesPipeline (priority 1)
+    so `images` is populated before the DB insert.
     """
 
     def open_spider(self, spider):
@@ -40,11 +40,25 @@ class SQLiteWorksPipeline:
         if not isinstance(item, ImageItem):
             return item
         row = dict(item)
+        images = row.get("images")
+        if not images:
+            logger.debug("No image for %s — skipping DB insert", item.get("Id"))
+            return item
+        image_path = images[0]["path"]
+        item_id = row.get("Id")
+        row["ImagePath"] = image_path
         # works.scraped_at is NOT NULL — stamp rows that lack it (e.g. when
         # the pipeline runs without the spider setting the field).
         row.setdefault("scraped_at", _now_iso())
         try:
-            db.insert_ignore(self.conn, "works", row)
+            cursor = db.insert_ignore(self.conn, "works", row)
+            if cursor.rowcount == 0:
+                # INSERT was ignored — row exists. Fill ImagePath only if
+                # the existing row has none yet.
+                self.conn.execute(
+                    "UPDATE works SET ImagePath = ? WHERE Id = ? AND ImagePath IS NULL",
+                    (image_path, item_id),
+                )
         except sqlite3.Error:
             self._db_errors += 1
             logger.warning(
