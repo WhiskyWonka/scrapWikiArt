@@ -33,7 +33,7 @@ class SQLiteWorksPipeline:
 
     def open_spider(self, spider):
         self.db_path = db.default_db_path(spider.settings)
-        self.img_store = db.default_img_store(spider.settings)
+        self.img_store = spider.settings.get("IMAGES_STORE", "data/img")
         self.conn = db.connect(self.db_path)
         self._db_errors = 0
         db.create_tables(self.conn)

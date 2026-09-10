@@ -76,8 +76,9 @@ WIKIART_DB_PATH = "data/works.db"
 # --- Image store path ---------------------------------------------------------
 # Base directory for downloaded images (relative to project root).
 # Scrapy's ImagesPipeline writes full-resolution images to <IMAGES_STORE>/full/.
-# Override via -s WIKIART_IMG_STORE=/custom/path on the CLI.
+# Override via -s IMAGES_STORE=/custom/path on the CLI.
 WIKIART_IMG_STORE = "data/img"
+IMAGES_STORE = WIKIART_IMG_STORE
 
 # --- Random sampling (WIKIART_SAMPLE_RATIO) -----------------------------------
 # Bernoulli(p) downsampling for the wikiart spider (issue #48): each unseen

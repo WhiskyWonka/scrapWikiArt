@@ -33,14 +33,6 @@ class WikiArtSpider(scrapy.Spider):
         },
     }
 
-    @classmethod
-    def from_crawler(cls, crawler):
-        spider = super().from_crawler(crawler)
-        spider.IMAGES_STORE = crawler.settings.get(
-            "WIKIART_IMG_STORE", "data/img"
-        )
-        return spider
-
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         # In-memory dedup set of artwork URLs across the whole crawl run
