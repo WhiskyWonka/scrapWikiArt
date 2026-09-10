@@ -28,8 +28,8 @@ class WikiArtSpider(scrapy.Spider):
     start_urls = ["https://www.wikiart.org/en/artists-by-nation"]
     custom_settings = {
         "ITEM_PIPELINES": {
-            "ScrapWikiArt.pipelines.SQLiteWorksPipeline": 1,
-            "scrapy.pipelines.images.ImagesPipeline": 2,
+            "scrapy.pipelines.images.ImagesPipeline": 1,
+            "ScrapWikiArt.pipelines.SQLiteWorksPipeline": 2,
         },
         "IMAGES_STORE": "data/img",
     }

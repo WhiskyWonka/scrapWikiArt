@@ -108,7 +108,8 @@ class TestCreateTables(unittest.TestCase):
                 "Author", "AuthorLink", "Date", "Styles", "StylesLinks",
                 "Series", "SeriesLink", "Genre", "GenreLink", "Media",
                 "Location", "Dimensions", "Description", "WikiDescription",
-                "WikiLink", "Tags", "scraped_at",
+                "WikiLink", "Tags", "ImagePath",
+                "scraped_at",
                 "ValidatedRaw", "Validated",
             }
             self.assertEqual(columns, expected)
