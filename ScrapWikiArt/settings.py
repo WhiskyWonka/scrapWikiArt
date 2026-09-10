@@ -73,6 +73,12 @@ SPIDERS_ENABLED = ["wikiart"]
 # db.default_db_path(spider.settings) which reads this value.
 WIKIART_DB_PATH = "data/works.db"
 
+# --- Image store path ---------------------------------------------------------
+# Base directory for downloaded images (relative to project root).
+# Scrapy's ImagesPipeline writes full-resolution images to <IMAGES_STORE>/full/.
+# Override via -s WIKIART_IMG_STORE=/custom/path on the CLI.
+WIKIART_IMG_STORE = "data/img"
+
 # --- Random sampling (WIKIART_SAMPLE_RATIO) -----------------------------------
 # Bernoulli(p) downsampling for the wikiart spider (issue #48): each unseen
 # artwork URL is enqueued with probability p. Default 1.0 is a strict no-op —

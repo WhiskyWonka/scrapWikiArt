@@ -8,6 +8,7 @@ from ScrapWikiArt.db import (
     connect,
     create_tables,
     default_db_path,
+    default_img_store,
     insert_ignore,
     load_seen_urls,
     table_exists,
@@ -55,6 +56,25 @@ class TestDefaultDbPath(unittest.TestCase):
             def get(self, key, default=None):
                 return default
         self.assertEqual(default_db_path(FakeSettings()), "data/works.db")
+
+
+class TestDefaultImgStore(unittest.TestCase):
+    def test_returns_setting_value(self):
+        class FakeSettings:
+            def get(self, key, default=None):
+                if key == "WIKIART_IMG_STORE":
+                    return "/custom/img"
+                return default
+        self.assertEqual(default_img_store(FakeSettings()), "/custom/img")
+
+    def test_falls_back_when_none(self):
+        self.assertEqual(default_img_store(None), "data/img")
+
+    def test_falls_back_when_missing_key(self):
+        class FakeSettings:
+            def get(self, key, default=None):
+                return default
+        self.assertEqual(default_img_store(FakeSettings()), "data/img")
 
 
 class TestTableExists(unittest.TestCase):

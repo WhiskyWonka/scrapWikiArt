@@ -43,7 +43,10 @@ class TestSQLiteWorksPipeline(unittest.TestCase):
     def _make_pipeline(self):
         self.pipeline = SQLiteWorksPipeline()
         spider = MagicMock()
-        spider.settings = {"WIKIART_DB_PATH": self.db_path}
+        spider.settings = {
+            "WIKIART_DB_PATH": self.db_path,
+            "WIKIART_IMG_STORE": "data/img",
+        }
         self.pipeline.open_spider(spider)
         return self.pipeline, spider
 
@@ -178,7 +181,7 @@ class TestSQLiteWorksPipeline(unittest.TestCase):
         conn = sqlite3.connect(self.db_path)
         try:
             cursor = conn.execute("SELECT ImagePath FROM works WHERE Id = 'img1'")
-            self.assertEqual(cursor.fetchone(), ("full/abc.jpg",))
+            self.assertEqual(cursor.fetchone(), ("data/img/full/abc.jpg",))
         finally:
             conn.close()
 
@@ -198,7 +201,7 @@ class TestSQLiteWorksPipeline(unittest.TestCase):
         conn = sqlite3.connect(self.db_path)
         try:
             cursor = conn.execute("SELECT ImagePath FROM works WHERE Id = 'dupnull'")
-            self.assertEqual(cursor.fetchone(), ("full/new.jpg",))
+            self.assertEqual(cursor.fetchone(), ("data/img/full/new.jpg",))
         finally:
             conn.close()
 
@@ -208,7 +211,7 @@ class TestSQLiteWorksPipeline(unittest.TestCase):
         try:
             conn.execute(
                 "INSERT INTO works (Id, Title, scraped_at, ImagePath) "
-                "VALUES ('duppath', 'T', '2024', 'full/old.jpg')"
+                "VALUES ('duppath', 'T', '2024', 'data/img/full/old.jpg')"
             )
         finally:
             conn.close()
@@ -218,7 +221,7 @@ class TestSQLiteWorksPipeline(unittest.TestCase):
         conn = sqlite3.connect(self.db_path)
         try:
             cursor = conn.execute("SELECT ImagePath FROM works WHERE Id = 'duppath'")
-            self.assertEqual(cursor.fetchone(), ("full/old.jpg",))
+            self.assertEqual(cursor.fetchone(), ("data/img/full/old.jpg",))
         finally:
             conn.close()
 
@@ -233,7 +236,7 @@ class TestSQLiteWorksPipeline(unittest.TestCase):
         conn = sqlite3.connect(self.db_path)
         try:
             cursor = conn.execute("SELECT ImagePath FROM works WHERE Id = 'multi'")
-            self.assertEqual(cursor.fetchone(), ("a.jpg",))
+            self.assertEqual(cursor.fetchone(), ("data/img/a.jpg",))
         finally:
             conn.close()
 
@@ -384,7 +387,10 @@ class TestPipelineDBErrorResilience(unittest.TestCase):
     def _make_pipeline_and_corrupt(self, pipeline_cls):
         pipeline = pipeline_cls()
         spider = MagicMock()
-        spider.settings = {"WIKIART_DB_PATH": self.db_path}
+        spider.settings = {
+            "WIKIART_DB_PATH": self.db_path,
+            "WIKIART_IMG_STORE": "data/img",
+        }
         pipeline.open_spider(spider)
         # Close the connection so the next DB write fails with sqlite3.Error
         pipeline.conn.close()

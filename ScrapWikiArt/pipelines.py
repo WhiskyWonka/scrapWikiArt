@@ -4,6 +4,7 @@
 # See: https://docs.scrapy.org/en/latest/topics/item-pipeline.html
 
 import logging
+import os
 import sqlite3
 from datetime import datetime, timezone
 
@@ -32,6 +33,7 @@ class SQLiteWorksPipeline:
 
     def open_spider(self, spider):
         self.db_path = db.default_db_path(spider.settings)
+        self.img_store = db.default_img_store(spider.settings)
         self.conn = db.connect(self.db_path)
         self._db_errors = 0
         db.create_tables(self.conn)
@@ -44,7 +46,7 @@ class SQLiteWorksPipeline:
         if not images:
             logger.debug("No image for %s — skipping DB insert", item.get("Id"))
             return item
-        image_path = images[0]["path"]
+        image_path = os.path.join(self.img_store, images[0]["path"])
         item_id = row.get("Id")
         row["ImagePath"] = image_path
         # works.scraped_at is NOT NULL — stamp rows that lack it (e.g. when
