@@ -31,7 +31,6 @@ class WikiArtSpider(scrapy.Spider):
             "scrapy.pipelines.images.ImagesPipeline": 1,
             "ScrapWikiArt.pipelines.SQLiteWorksPipeline": 2,
         },
-        "IMAGES_STORE": "data/img",
     }
 
     def __init__(self, *args, **kwargs):

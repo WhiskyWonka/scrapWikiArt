@@ -94,6 +94,20 @@ def default_db_path(settings):
     return val if val else WIKIART_DB_PATH
 
 
+def default_img_store(settings):
+    """Resolve WIKIART_IMG_STORE from Scrapy settings, falling back to default.
+
+    None-safe: handles settings=None and settings where the key is absent.
+    The default matches settings.py (single source of truth).
+    """
+    from ScrapWikiArt.settings import WIKIART_IMG_STORE as default
+
+    if settings is None:
+        return default
+    val = settings.get("WIKIART_IMG_STORE", default)
+    return val if val else default
+
+
 def connect(db_path):
     """Open a SQLite connection, creating parent directories as needed.
 
