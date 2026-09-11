@@ -1,0 +1,209 @@
+{
+  "info": {
+    "name": "WikiArt Data API",
+    "description": "Servicio de datos read-only del scraper wikiart. \n\nEndpoints:\n- GET /healthz \u2013 liveness, verifica DB reachable (200 {\"status\":\"ok\"} | 503 si no)\n- GET /api/random?n=&token= \u2013 obras random sin repetir dentro de un ciclo de deck; n clamp a [1,50] (default 12); token desconocido crea deck propio\n- GET /images/full/<hash>.jpg \u2013 bytes de la imagen (Cache-Control: public, max-age=86400; 404 si falta)\n\nLevantar con: bash api/run.sh \u2192 127.0.0.1:8001",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    { "key": "baseUrl", "value": "http://127.0.0.1:8001", "type": "string" },
+    { "key": "token", "value": "postman-demo", "type": "string" }
+  ],
+  "item": [
+    {
+      "name": "Health",
+      "item": [
+        {
+          "name": "GET /healthz",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": { "raw": "{{baseUrl}}/healthz", "host": ["{{baseUrl}}"], "path": ["healthz"] }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status 200', function(){ pm.response.to.have.status(200); });",
+                  "pm.test('Body ok', function(){ pm.expect(pm.response.json().status).to.eql('ok'); });"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Random",
+      "item": [
+        {
+          "name": "GET /api/random (default)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/random?n=12&token={{token}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "random"],
+              "query": [
+                { "key": "n", "value": "12", "description": "Cantidad de obras. Clamp: 1..50. Default 12." },
+                { "key": "token", "value": "{{token}}", "description": "Session id. Cada token tiene su propia baraja; vac\u00edo comparte una an\u00f3nima." }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status 200', function(){ pm.response.to.have.status(200); });",
+                  "pm.test('Es un array', function(){ pm.expect(pm.response.json()).to.be.an('array'); });",
+                  "pm.test('No excede n', function(){ pm.expect(pm.response.json().length).to.be.at.most(12); });",
+                  "pm.test('Obras con image_url', function(){ pm.response.json().forEach(function(w){ pm.expect(w.image_url).to.match(/^full\\/.+\\.jpg$/); }); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "GET /api/random n=1 (m\u00ednimo)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/random?n=1&token={{token}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "random"],
+              "query": [
+                { "key": "n", "value": "1" },
+                { "key": "token", "value": "{{token}}" }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status 200', function(){ pm.response.to.have.status(200); });",
+                  "pm.test('Devuelve 1 obra', function(){ pm.expect(pm.response.json().length).to.eql(1); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "GET /api/random n=99 (clamp a 50)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/random?n=99&token={{token}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "random"],
+              "query": [
+                { "key": "n", "value": "99" },
+                { "key": "token", "value": "{{token}}" }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status 200', function(){ pm.response.to.have.status(200); });",
+                  "pm.test('Clamp a 50', function(){ pm.expect(pm.response.json().length).to.be.at.most(50); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "GET /api/random n=abc (422)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/random?n=abc&token={{token}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "random"],
+              "query": [
+                { "key": "n", "value": "abc" },
+                { "key": "token", "value": "{{token}}" }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status 422', function(){ pm.response.to.have.status(422); });"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Images",
+      "item": [
+        {
+          "name": "GET /images/full/<hash>.jpg",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/images/full/000090d33bd859bd0586f8021621ef15dafb817b.jpg",
+              "host": ["{{baseUrl}}"],
+              "path": ["images", "full", "000090d33bd859bd0586f8021621ef15dafb817b.jpg"]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status 200', function(){ pm.response.to.have.status(200); });",
+                  "pm.test('Content-Type image/jpeg', function(){ pm.expect(pm.response.headers.get('content-type')).to.include('image/jpeg'); });",
+                  "pm.test('Cache-Control', function(){ pm.expect(pm.response.headers.get('cache-control')).to.eql('public, max-age=86400'); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "GET /images falta (404)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/images/full/definitely-missing.jpg",
+              "host": ["{{baseUrl}}"],
+              "path": ["images", "full", "definitely-missing.jpg"]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status 404', function(){ pm.response.to.have.status(404); });"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}
