@@ -9,19 +9,54 @@ at the driver level.
 ids (see :mod:`api.decks`): each request *deals* ids off the deck instead of
 re-selecting from the database, so a deck advances until it runs out and is
 rebuilt (re-fetch + reshuffle).
+
+``/images`` serves the image store directory (``db.default_img_store()`` →
+``WIKIART_IMG_STORE`` or ``<repo>/data/img``) as static files with a long-lived
+``Cache-Control`` header.  Startup fails fast when the store directory is
+missing (spec IMAGE-SERVING-005).
 """
 
 import contextlib
+import os
 import random
 import sqlite3
 
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+from starlette.staticfiles import StaticFiles
 
 from api import db
 from api.decks import DeckStore
 
-app = FastAPI(title="WikiArt Data API", version="0.1.0")
+
+class CachedStaticFiles(StaticFiles):
+    """StaticFiles that stamps a long-lived ``Cache-Control`` on every response.
+
+    The header is set after ``super()`` so it covers both the 200
+    ``FileResponse`` and the 304 ``NotModifiedResponse`` (RFC 9110 §15.4.5:
+    a 304 must mirror the 200 caching headers; starlette's
+    NotModifiedResponse whitelists ``cache-control``).
+    """
+
+    def file_response(self, full_path, stat_result, scope, status_code=200):
+        response = super().file_response(full_path, stat_result, scope, status_code)
+        response.headers["Cache-Control"] = "public, max-age=86400"
+        return response
+
+
+_IMAGE_STORE = db.default_img_store()  # captured at import
+
+
+@contextlib.asynccontextmanager
+async def _lifespan(app):
+    if not os.path.isdir(_IMAGE_STORE):
+        raise RuntimeError(
+            f"Image store directory '{_IMAGE_STORE}' does not exist — "
+            "run the scraper or set WIKIART_IMG_STORE")
+    yield
+
+
+app = FastAPI(title="WikiArt Data API", version="0.1.0", lifespan=_lifespan)
 
 app.add_middleware(
     CORSMiddleware,
@@ -93,3 +128,10 @@ def random_works(n: int = 12, token: str = ""):
         work["image_url"] = work["ImagePath"]
         works.append(work)
     return works
+
+
+app.mount(
+    "/images",
+    CachedStaticFiles(directory=_IMAGE_STORE, check_dir=False),
+    name="images",
+)
